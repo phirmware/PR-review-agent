@@ -1,0 +1,23 @@
+{
+  "name": "pr-review-agent",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "shared",
+    "bridge",
+    "extension"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w bridge && npm run build -w extension",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w bridge && npm run typecheck -w extension",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.1",
+    "esbuild": "^0.25.5",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@review-guide/extension",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@review-guide/shared": "0.1.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@review-guide/bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@review-guide/shared": "0.1.0",
+    "express": "^5.1.0",
+    "zod": "^3.24.4"
+  }
+}

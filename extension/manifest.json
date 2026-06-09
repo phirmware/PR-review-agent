@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "PR Review Guide",
+  "version": "0.1.0",
+  "description": "Interactive GitHub PR review guidance powered by a local bridge and coding-agent providers.",
+  "permissions": [
+    "storage",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8787/*",
+    "http://localhost:8787/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
