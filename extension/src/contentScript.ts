@@ -47,6 +47,7 @@ const state: PanelState = {
   analysedFiles: [],
   activeFile: null,
   activeGuideSection: "understanding",
+  loadedGuideSections: {},
   localRepoPathInput: ""
 };
 
@@ -168,6 +169,46 @@ async function suggestTests(file: string): Promise<void> {
   }
 }
 
+async function loadGuideSection(section: GuideSectionId): Promise<void> {
+  if (!state.pr || !state.analysis || (section !== "trace" && section !== "worries")) {
+    return;
+  }
+
+  if (state.loadedGuideSections?.[section] || state.loadingAction === `guide:${section}`) {
+    return;
+  }
+
+  update({ loadingAction: `guide:${section}`, bridgeError: undefined });
+  try {
+    if (section === "trace") {
+      const sectionResult = await client.analysePrTrace(state.pr);
+      currentAnalysis = {
+        ...state.analysis,
+        impactChains: sectionResult.impactChains
+      };
+    } else {
+      const sectionResult = await client.analysePrWorries(state.pr);
+      currentAnalysis = {
+        ...state.analysis,
+        worries: sectionResult.worries
+      };
+    }
+    update({
+      analysis: currentAnalysis,
+      loadedGuideSections: {
+        ...(state.loadedGuideSections ?? {}),
+        [section]: true
+      }
+    });
+  } catch (error) {
+    update({
+      bridgeError: error instanceof Error ? error.message : `Failed to generate ${section === "trace" ? "change tracing" : "worries"}.`
+    });
+  } finally {
+    update({ loadingAction: null });
+  }
+}
+
 async function toggleReviewed(file: string): Promise<void> {
   if (!state.pr) {
     return;
@@ -243,6 +284,10 @@ const panel = new ReviewPanel({
         analysis: currentAnalysis,
         activeFile: currentAnalysis.reviewOrder[0]?.file ?? currentAnalysis.changedFiles[0]?.file ?? null,
         activeGuideSection: "understanding",
+        loadedGuideSections: {
+          trace: currentAnalysis.impactChains.length > 0,
+          worries: currentAnalysis.worries.length > 0
+        },
         preApproval: null
       });
       applyRiskBadges(currentAnalysis);
@@ -328,7 +373,8 @@ const panel = new ReviewPanel({
         testsByFile: {},
         preApproval: null,
         activeFile: null,
-        activeGuideSection: "understanding"
+        activeGuideSection: "understanding",
+        loadedGuideSections: {}
       });
     } catch (error) {
       update({ bridgeError: error instanceof Error ? error.message : "Failed to switch provider." });
@@ -338,6 +384,10 @@ const panel = new ReviewPanel({
   },
   onSelectGuideSection(section: GuideSectionId) {
     update({ activeGuideSection: section });
+    void loadGuideSection(section);
+  },
+  onLoadGuideSection(section: GuideSectionId) {
+    void loadGuideSection(section);
   }
 });
 
@@ -556,6 +606,7 @@ async function syncPageState(): Promise<void> {
       testsByFile: {},
       activeFile: null,
       activeGuideSection: "understanding",
+      loadedGuideSections: {},
       preApproval: null
     });
     fileAnalysisByFile = {};
@@ -586,6 +637,7 @@ async function syncPageState(): Promise<void> {
       preApproval: null,
       activeFile: null,
       activeGuideSection: "understanding",
+      loadedGuideSections: {},
       localRepoPathInput: "",
       reviewedFiles: []
     });

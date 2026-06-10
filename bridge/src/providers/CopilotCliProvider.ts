@@ -3,12 +3,17 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrTraceProviderInput,
+  AnalysePrTraceResponse,
+  AnalysePrWorriesProviderInput,
+  AnalysePrWorriesResponse,
   AskFileQuestionProviderInput,
   AskFileQuestionResponse,
   ExplainFileProviderInput,
   ExplainFileResponse,
   PreApprovalCheckResponse,
   PreApprovalProviderInput,
+  ProviderExecutionInput,
   SuggestTestsProviderInput,
   SuggestTestsResponse
 } from "@review-guide/shared";
@@ -17,6 +22,8 @@ import { AppError } from "../errors.js";
 import { runCommand } from "../git.js";
 import { buildAnalyseFilePrompt } from "../prompts/analyseFilePrompt.js";
 import { buildAnalysePrPrompt } from "../prompts/analysePrPrompt.js";
+import { buildAnalysePrTracePrompt } from "../prompts/analysePrTracePrompt.js";
+import { buildAnalysePrWorriesPrompt } from "../prompts/analysePrWorriesPrompt.js";
 import { buildAskFileQuestionPrompt } from "../prompts/askFileQuestionPrompt.js";
 import { buildExplainFilePrompt } from "../prompts/explainFilePrompt.js";
 import { buildPreApprovalPrompt } from "../prompts/preApprovalPrompt.js";
@@ -24,6 +31,8 @@ import { buildSuggestTestsPrompt } from "../prompts/suggestTestsPrompt.js";
 import {
   analyseFileResponseSchema,
   analysePrResponseSchema,
+  analysePrTraceResponseSchema,
+  analysePrWorriesResponseSchema,
   askFileQuestionResponseSchema,
   explainFileResponseSchema,
   extractJsonPayload,
@@ -59,7 +68,7 @@ function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
-async function runCopilot(prompt: string, input: AnalysePrProviderInput): Promise<string> {
+async function runCopilot(prompt: string, input: ProviderExecutionInput): Promise<string> {
   // This provider can send repository context to GitHub Copilot depending on the user's local Copilot CLI setup.
   const command = process.env.REVIEW_GUIDE_COPILOT_COMMAND ?? "copilot";
   const sessionId = await getProviderSessionId("copilot-cli", input);
@@ -107,6 +116,16 @@ export class CopilotCliProvider implements ReviewAgentProvider {
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const raw = await runCopilot(buildAnalysePrPrompt(input), input);
     return parseCopilotJson(raw, analysePrResponseSchema, "analyse-pr");
+  }
+
+  async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {
+    const raw = await runCopilot(buildAnalysePrTracePrompt(input), input);
+    return parseCopilotJson(raw, analysePrTraceResponseSchema, "analyse-pr-trace");
+  }
+
+  async analysePrWorries(input: AnalysePrWorriesProviderInput): Promise<AnalysePrWorriesResponse> {
+    const raw = await runCopilot(buildAnalysePrWorriesPrompt(input), input);
+    return parseCopilotJson(raw, analysePrWorriesResponseSchema, "analyse-pr-worries");
   }
 
   async analyseFile(input: AnalyseFileProviderInput): Promise<AnalyseFileResponse> {

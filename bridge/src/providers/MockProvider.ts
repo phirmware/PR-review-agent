@@ -4,6 +4,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrTraceProviderInput,
+  AnalysePrTraceResponse,
+  AnalysePrWorriesProviderInput,
+  AnalysePrWorriesResponse,
   AskFileQuestionProviderInput,
   AskFileQuestionResponse,
   ExplainFileProviderInput,
@@ -320,7 +324,21 @@ export class MockProvider implements ReviewAgentProvider {
         reason,
         signals
       })),
-      impactChains: buildImpactChains(changedFiles),
+      impactChains: [],
+      worries: []
+    };
+  }
+
+  async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {
+    const changedFiles = await getChangedFiles(input.baseRef, input.worktreePath);
+    return {
+      impactChains: buildImpactChains(changedFiles)
+    };
+  }
+
+  async analysePrWorries(input: AnalysePrWorriesProviderInput): Promise<AnalysePrWorriesResponse> {
+    const changedFiles = await getChangedFiles(input.baseRef, input.worktreePath);
+    return {
       worries: buildWorries(changedFiles)
     };
   }

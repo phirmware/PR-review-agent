@@ -3,6 +3,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrTraceProviderInput,
+  AnalysePrTraceResponse,
+  AnalysePrWorriesProviderInput,
+  AnalysePrWorriesResponse,
   AskFileQuestionProviderInput,
   AskFileQuestionResponse,
   ExplainFileProviderInput,
@@ -17,6 +21,8 @@ import type {
 export interface ReviewAgentProvider {
   name: ProviderName;
   analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse>;
+  analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse>;
+  analysePrWorries(input: AnalysePrWorriesProviderInput): Promise<AnalysePrWorriesResponse>;
   analyseFile(input: AnalyseFileProviderInput): Promise<AnalyseFileResponse>;
   askFileQuestion(input: AskFileQuestionProviderInput): Promise<AskFileQuestionResponse>;
   explainFile(input: ExplainFileProviderInput): Promise<ExplainFileResponse>;

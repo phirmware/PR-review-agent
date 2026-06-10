@@ -25,11 +25,12 @@ function callbacks(overrides: Partial<ReviewPanelCallbacks> = {}): ReviewPanelCa
     onPreviousFile: vi.fn(),
     onProviderChange: vi.fn(),
     onSelectGuideSection: vi.fn(),
+    onLoadGuideSection: vi.fn(),
     ...overrides
   };
 }
 
-function makeAnalysis(): AnalysePrResponse {
+function makeAnalysis(overrides: Partial<AnalysePrResponse> = {}): AnalysePrResponse {
   return {
     summary: "Adds caching around loyalty balances.",
     prUnderstanding: {
@@ -82,7 +83,8 @@ function makeAnalysis(): AnalysePrResponse {
         suggestedCheck: "Verify invalidation and refresh tests.",
         risk: "high"
       }
-    ]
+    ],
+    ...overrides
   };
 }
 
@@ -142,5 +144,31 @@ describe("ReviewPanel", () => {
     expect(document.body.textContent).toContain("Change Tracing");
     expect(document.body.textContent).toContain("Balance cache impact");
     expect(document.body.textContent).not.toContain("PR Understanding");
+  });
+
+  it("renders lazy section loading controls when trace has not been generated", () => {
+    installDom();
+    const onLoadGuideSection = vi.fn();
+    const panel = new ReviewPanel(callbacks({ onLoadGuideSection }));
+
+    panel.render({
+      isOpen: true,
+      bridgeStatus: "connected",
+      analysis: makeAnalysis({ impactChains: [] }),
+      activeGuideSection: "trace",
+      loadedGuideSections: {
+        trace: false
+      },
+      explainByFile: {},
+      testsByFile: {},
+      reviewedFiles: [],
+      analysedFiles: [],
+      activeFile: "src/cacheService.ts",
+      localRepoPathInput: ""
+    });
+
+    expect(document.body.textContent).toContain("Change Tracing loads on demand");
+    document.querySelector<HTMLButtonElement>("[data-rg-action='load-guide-section']")?.click();
+    expect(onLoadGuideSection).toHaveBeenCalledWith("trace");
   });
 });

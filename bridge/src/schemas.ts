@@ -98,6 +98,29 @@ export const analysePrResponseSchema = z.object({
   )
 });
 
+export const analysePrTraceResponseSchema = z.object({
+  impactChains: z.array(
+    z.object({
+      title: z.string().min(1),
+      nodes: z.array(z.string().min(1)),
+      explanation: z.string().min(1),
+      risk: riskLevelSchema
+    })
+  )
+});
+
+export const analysePrWorriesResponseSchema = z.object({
+  worries: z.array(
+    z.object({
+      title: z.string().min(1),
+      reason: z.string().min(1),
+      files: z.array(z.string().min(1)),
+      suggestedCheck: z.string().min(1),
+      risk: riskLevelSchema
+    })
+  )
+});
+
 export const explainFileResponseSchema = z.object({
   file: z.string().min(1),
   explanation: z.string().min(1),

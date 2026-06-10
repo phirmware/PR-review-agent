@@ -3,12 +3,17 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrTraceProviderInput,
+  AnalysePrTraceResponse,
+  AnalysePrWorriesProviderInput,
+  AnalysePrWorriesResponse,
   AskFileQuestionProviderInput,
   AskFileQuestionResponse,
   ExplainFileProviderInput,
   ExplainFileResponse,
   PreApprovalCheckResponse,
   PreApprovalProviderInput,
+  ProviderExecutionInput,
   SuggestTestsProviderInput,
   SuggestTestsResponse
 } from "@review-guide/shared";
@@ -17,6 +22,8 @@ import { AppError } from "../errors.js";
 import { runCommand } from "../git.js";
 import {
   analysePrResponseSchema,
+  analysePrTraceResponseSchema,
+  analysePrWorriesResponseSchema,
   analyseFileResponseSchema,
   askFileQuestionResponseSchema,
   explainFileResponseSchema,
@@ -25,6 +32,8 @@ import {
   suggestTestsResponseSchema
 } from "../schemas.js";
 import { buildAnalysePrPrompt } from "../prompts/analysePrPrompt.js";
+import { buildAnalysePrTracePrompt } from "../prompts/analysePrTracePrompt.js";
+import { buildAnalysePrWorriesPrompt } from "../prompts/analysePrWorriesPrompt.js";
 import { buildAnalyseFilePrompt } from "../prompts/analyseFilePrompt.js";
 import { buildAskFileQuestionPrompt } from "../prompts/askFileQuestionPrompt.js";
 import { buildExplainFilePrompt } from "../prompts/explainFilePrompt.js";
@@ -41,7 +50,7 @@ function getClaudeCommandArgs(prompt: string, sessionId: string | null): string[
   return [...prefixArgs, prompt];
 }
 
-async function runClaude(prompt: string, input: AnalysePrProviderInput): Promise<string> {
+async function runClaude(prompt: string, input: ProviderExecutionInput): Promise<string> {
   // This provider can send repository context to an external service depending on the user's Claude Code setup.
   const command = process.env.REVIEW_GUIDE_CLAUDE_COMMAND ?? "claude";
   const sessionId = await getProviderSessionId("claude-code", input);
@@ -76,6 +85,16 @@ export class ClaudeCodeProvider implements ReviewAgentProvider {
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const raw = await runClaude(buildAnalysePrPrompt(input), input);
     return parseClaudeJson(raw, analysePrResponseSchema, "analyse-pr");
+  }
+
+  async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {
+    const raw = await runClaude(buildAnalysePrTracePrompt(input), input);
+    return parseClaudeJson(raw, analysePrTraceResponseSchema, "analyse-pr-trace");
+  }
+
+  async analysePrWorries(input: AnalysePrWorriesProviderInput): Promise<AnalysePrWorriesResponse> {
+    const raw = await runClaude(buildAnalysePrWorriesPrompt(input), input);
+    return parseClaudeJson(raw, analysePrWorriesResponseSchema, "analyse-pr-worries");
   }
 
   async analyseFile(input: AnalyseFileProviderInput): Promise<AnalyseFileResponse> {

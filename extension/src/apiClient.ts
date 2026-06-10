@@ -2,6 +2,8 @@ import type {
   AnalyseFileRequest,
   AnalyseFileResponse,
   AnalysePrResponse,
+  AnalysePrTraceResponse,
+  AnalysePrWorriesResponse,
   AskFileQuestionRequest,
   AskFileQuestionResponse,
   BindRepoRequest,
@@ -76,6 +78,20 @@ export class ApiClient {
 
   analysePr(identity: PullRequestIdentity): Promise<AnalysePrResponse> {
     return this.requestJson("/analyse-pr", {
+      method: "POST",
+      body: JSON.stringify(identity)
+    });
+  }
+
+  analysePrTrace(identity: PullRequestIdentity): Promise<AnalysePrTraceResponse> {
+    return this.requestJson("/analyse-pr-trace", {
+      method: "POST",
+      body: JSON.stringify(identity)
+    });
+  }
+
+  analysePrWorries(identity: PullRequestIdentity): Promise<AnalysePrWorriesResponse> {
+    return this.requestJson("/analyse-pr-worries", {
       method: "POST",
       body: JSON.stringify(identity)
     });

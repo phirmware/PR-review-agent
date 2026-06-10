@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   analyseFileResponseSchema,
   analysePrResponseSchema,
+  analysePrTraceResponseSchema,
+  analysePrWorriesResponseSchema,
   askFileQuestionResponseSchema,
   extractJsonPayload,
   repoIdentitySchema
@@ -74,6 +76,47 @@ describe("schemas", () => {
       changedFiles: [
         {
           signals: ["API contract"]
+        }
+      ]
+    });
+  });
+
+  it("validates lazy PR guide section output", () => {
+    expect(
+      analysePrTraceResponseSchema.parse({
+        impactChains: [
+          {
+            title: "API impact",
+            nodes: ["src/api.ts", "src/api.test.ts"],
+            explanation: "The API change should be reflected in tests.",
+            risk: "medium"
+          }
+        ]
+      })
+    ).toMatchObject({
+      impactChains: [
+        {
+          risk: "medium"
+        }
+      ]
+    });
+
+    expect(
+      analysePrWorriesResponseSchema.parse({
+        worries: [
+          {
+            title: "Missing regression coverage",
+            reason: "The behavior should be covered by a focused test.",
+            files: ["src/api.ts"],
+            suggestedCheck: "Run API tests.",
+            risk: "medium"
+          }
+        ]
+      })
+    ).toMatchObject({
+      worries: [
+        {
+          title: "Missing regression coverage"
         }
       ]
     });

@@ -33,6 +33,7 @@ export interface PanelState {
     suggestions?: string[];
   };
   activeGuideSection?: GuideSectionId;
+  loadedGuideSections?: Partial<Record<GuideSectionId, boolean>>;
   availableProviders?: ProviderName[];
   analysis?: AnalysePrResponse | null;
   activeFile?: string | null;
@@ -60,6 +61,7 @@ export interface ReviewPanelCallbacks {
   onPreviousFile(): void;
   onProviderChange(provider: ProviderName): void;
   onSelectGuideSection(section: GuideSectionId): void;
+  onLoadGuideSection(section: GuideSectionId): void;
 }
 
 function escapeHtml(value: string): string {
@@ -105,6 +107,27 @@ function renderSignals(signals: string[] | undefined): string {
   return `<div class="rg-review-guide__signal-row">${signals
     .map((signal) => `<span class="rg-review-guide__signal">${escapeHtml(signal)}</span>`)
     .join("")}</div>`;
+}
+
+function renderLazySectionState(section: GuideSectionId, title: string, isLoading: boolean, isLoaded: boolean): string {
+  if (isLoading) {
+    return `<div class="rg-review-guide__loading">
+      <span class="rg-review-guide__spinner" aria-hidden="true"></span>
+      <span>Generating ${escapeHtml(title.toLowerCase())}...</span>
+    </div>`;
+  }
+
+  if (!isLoaded) {
+    return `<div class="rg-review-guide__insight">
+      <strong>${escapeHtml(title)} loads on demand</strong>
+      <p>This section uses a separate provider request so the initial PR overview can appear faster.</p>
+      <button class="rg-review-guide__primary" data-rg-action="load-guide-section" data-rg-section="${section}">Generate ${escapeHtml(
+        title
+      )}</button>
+    </div>`;
+  }
+
+  return "";
 }
 
 function getReviewFiles(analysis: AnalysePrResponse) {
@@ -333,10 +356,14 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
   }
 
   if (activeSection === "trace") {
+    const isLoading = state.loadingAction === "guide:trace";
+    const isLoaded = Boolean(state.loadedGuideSections?.trace || analysis.impactChains.length > 0);
+    const lazyState = renderLazySectionState("trace", "Change Tracing", isLoading, isLoaded);
     return `<div class="rg-review-guide__guide-section">
       <div class="rg-review-guide__section-heading">Change Tracing</div>
       ${
-        analysis.impactChains.length > 0
+        lazyState ||
+        (analysis.impactChains.length > 0
           ? analysis.impactChains
               .map(
                 (chain) => `<div class="rg-review-guide__impact-chain">
@@ -351,15 +378,19 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
                 </div>`
               )
               .join("")
-          : `<div class="rg-review-guide__muted">No impact chains were returned by the provider.</div>`
+          : `<div class="rg-review-guide__muted">No impact chains were returned by the provider.</div>`)
       }
     </div>`;
   }
 
+  const isWorriesLoading = state.loadingAction === "guide:worries";
+  const worriesLoaded = Boolean(state.loadedGuideSections?.worries || analysis.worries.length > 0);
+  const worriesLazyState = renderLazySectionState("worries", "Worries", isWorriesLoading, worriesLoaded);
   return `<div class="rg-review-guide__guide-section">
     <div class="rg-review-guide__section-heading">What To Worry About</div>
     ${
-      analysis.worries.length > 0
+      worriesLazyState ||
+      (analysis.worries.length > 0
         ? analysis.worries
             .map(
               (worry) => `<div class="rg-review-guide__worry">
@@ -373,7 +404,7 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
               </div>`
             )
             .join("")
-        : `<div class="rg-review-guide__muted">No major worries were returned by the provider.</div>`
+        : `<div class="rg-review-guide__muted">No major worries were returned by the provider.</div>`)
     }
   </div>`;
 }
@@ -533,6 +564,13 @@ export class ReviewPanel {
           const section = target?.getAttribute("data-rg-section") as GuideSectionId | null;
           if (section && GUIDE_SECTIONS.some((item) => item.id === section)) {
             this.callbacks.onSelectGuideSection(section);
+          }
+          break;
+        }
+        case "load-guide-section": {
+          const section = target?.getAttribute("data-rg-section") as GuideSectionId | null;
+          if (section && GUIDE_SECTIONS.some((item) => item.id === section)) {
+            this.callbacks.onLoadGuideSection(section);
           }
           break;
         }

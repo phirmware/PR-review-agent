@@ -13,12 +13,14 @@ import type {
 } from "@review-guide/shared";
 import { BRIDGE_VERSION } from "./config.js";
 import { ConfigStore } from "./configStore.js";
-import { buildFileContextPack } from "./contextPack.js";
+import { buildFileContextPack, buildPrContextPack } from "./contextPack.js";
 import { AppError, toErrorMessage } from "./errors.js";
 import { ProviderManager } from "./providerManager.js";
 import { assertBoundRepoPath, validateRepoBinding } from "./repoBinding.js";
 import {
   analyseFileResponseSchema,
+  analysePrTraceResponseSchema,
+  analysePrWorriesResponseSchema,
   bindRepoRequestSchema,
   askFileQuestionRequestSchema,
   askFileQuestionResponseSchema,
@@ -230,13 +232,62 @@ export function createApp() {
       const identity = pullRequestIdentitySchema.parse(request.body);
       const provider = await providerManager.getSelectedProvider();
       const prepared = await resolvePreparedContext(identity);
+      const contextPack = await buildPrContextPack({
+          worktreePath: prepared.worktreePath,
+          baseRef: prepared.baseRef
+      });
       const result = await provider.analysePr({
           ...identity,
+          contextPack,
           worktreePath: prepared.worktreePath,
           baseRef: prepared.baseRef,
           headRef: prepared.headRef
       });
       response.json(validateProviderResult(analysePrResponseSchema, result));
+    } catch (error) {
+      sendError(response, error);
+    }
+  });
+
+  app.post("/analyse-pr-trace", async (request, response) => {
+    try {
+      const identity = pullRequestIdentitySchema.parse(request.body);
+      const provider = await providerManager.getSelectedProvider();
+      const prepared = await resolvePreparedContext(identity);
+      const contextPack = await buildPrContextPack({
+          worktreePath: prepared.worktreePath,
+          baseRef: prepared.baseRef
+      });
+      const result = await provider.analysePrTrace({
+          ...identity,
+          contextPack,
+          worktreePath: prepared.worktreePath,
+          baseRef: prepared.baseRef,
+          headRef: prepared.headRef
+      });
+      response.json(validateProviderResult(analysePrTraceResponseSchema, result));
+    } catch (error) {
+      sendError(response, error);
+    }
+  });
+
+  app.post("/analyse-pr-worries", async (request, response) => {
+    try {
+      const identity = pullRequestIdentitySchema.parse(request.body);
+      const provider = await providerManager.getSelectedProvider();
+      const prepared = await resolvePreparedContext(identity);
+      const contextPack = await buildPrContextPack({
+          worktreePath: prepared.worktreePath,
+          baseRef: prepared.baseRef
+      });
+      const result = await provider.analysePrWorries({
+          ...identity,
+          contextPack,
+          worktreePath: prepared.worktreePath,
+          baseRef: prepared.baseRef,
+          headRef: prepared.headRef
+      });
+      response.json(validateProviderResult(analysePrWorriesResponseSchema, result));
     } catch (error) {
       sendError(response, error);
     }

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildFileContextPack } from "../src/contextPack";
+import { buildFileContextPack, buildPrContextPack } from "../src/contextPack";
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, {
@@ -62,5 +62,29 @@ describe("buildFileContextPack", () => {
     expect(contextPack.fileDiff).toContain("export const api");
     expect(contextPack.importHints).toContain("+import { helper } from './helper';");
     expect(contextPack.fileDiffTruncated).toBe(false);
+  });
+});
+
+describe("buildPrContextPack", () => {
+  it("builds a bounded PR-level context pack for overview analysis", async () => {
+    const repoPath = await makeRepo();
+    const contextPack = await buildPrContextPack({
+      worktreePath: repoPath,
+      baseRef: "HEAD~1"
+    });
+
+    expect(contextPack.changedFileCount).toBe(3);
+    expect(contextPack.changedFiles.map((file) => file.file)).toEqual(["src/api.test.ts", "src/api.ts", "src/helper.ts"]);
+    expect(contextPack.changedFiles.find((file) => file.file === "src/api.ts")?.riskSignals).toContain("API contract");
+    expect(contextPack.topRiskFiles.length).toBeGreaterThan(0);
+    expect(contextPack.sampledFileDiffs[0].diff).toContain("export const api");
+    expect(contextPack.likelyTestFiles).toContain("src/api.test.ts");
+    expect(contextPack.packageScripts).toContain("test: vitest run");
+    expect(contextPack.packageScripts).not.toContain("start: node server.js");
+    expect(contextPack.directorySummary[0]).toMatchObject({
+      directory: "src",
+      files: 3
+    });
+    expect(contextPack.notes.join(" ")).toContain("starting map");
   });
 });

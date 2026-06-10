@@ -285,6 +285,8 @@ Implemented endpoints:
 - `POST /bind-repo`
 - `POST /prepare-pr-worktree`
 - `POST /analyse-pr`
+- `POST /analyse-pr-trace`
+- `POST /analyse-pr-worries`
 - `POST /analyse-file`
 - `POST /ask-file-question`
 - `POST /explain-file`
@@ -302,7 +304,7 @@ Initial file-level provider requests could take around **60 seconds or more** be
 - fresh provider conversation/session
 - agent discovery across the repo
 
-The bridge now includes three optimizations that can bring repeated file-level latency down toward the **~20 second range** in local testing, depending on provider, repo size, file complexity, and provider availability.
+The bridge now includes several optimizations that can bring repeated file-level latency down toward the **~20 second range** in local testing, depending on provider, repo size, file complexity, and provider availability.
 
 This is not a guaranteed SLA, but it is the intended performance direction.
 
@@ -360,6 +362,43 @@ Example log:
 [bridge:context] built file context pack for openapi.yaml: changed=18 related=4 tests=2 callers=0 diffChars=4200 in 85ms
 ```
 
+### 4. PR Context Packs
+
+Before PR-level overview analysis, the bridge builds a bounded PR context pack from cheap local commands:
+
+- changed files with additions/deletions
+- heuristic risk signals
+- top risky files
+- capped sampled diffs
+- likely test files
+- useful package scripts
+- directory summary
+- diff stat
+
+The prompt treats this as a starting map, not the source of truth. Providers are told to inspect more when high-risk or unclear areas need confirmation.
+
+Example log:
+
+```text
+[bridge:context] built PR context pack: changed=18 included=18 risky=8 sampledDiffs=3 sampledDiffChars=10900 in 120ms
+```
+
+### 5. Lazy Guide Sections
+
+The initial `POST /analyse-pr` call now focuses on the sections a reviewer needs first:
+
+- PR Understanding
+- Review Plan
+- Risk Heatmap
+- Files
+
+Heavier guide sections are loaded on demand:
+
+- `POST /analyse-pr-trace` for Change Tracing
+- `POST /analyse-pr-worries` for Worries
+
+This avoids making the first overview request wait for every possible deep-dive section. The panel caches those lazy section results in the current page session, so switching away and back does not immediately re-run the provider.
+
 ## Logging
 
 The bridge logs request timing and optimization decisions.
@@ -370,6 +409,7 @@ Useful examples:
 [bridge] POST /analyse-file -> 200 26300ms
 [bridge:worktree] reusing worktree; PR head SHA unchanged (...)
 [bridge:provider-session] reusing provider session <uuid> ...
+[bridge:context] built PR context pack: changed=18 included=18 risky=8 sampledDiffs=3 sampledDiffChars=10900 in 120ms
 [bridge:context] built file context pack for src/foo.ts ...
 ```
 
@@ -461,6 +501,29 @@ Then check:
 ```sh
 curl http://127.0.0.1:8787/health
 ```
+
+### esbuild platform mismatch on macOS
+
+If `npm run build` says `@esbuild/darwin-arm64` is present but `@esbuild/darwin-x64` is needed, or the reverse, Node and `node_modules` were installed under different CPU architectures. This commonly happens when one terminal is running through Rosetta and another is native Apple Silicon.
+
+Check your current Node architecture:
+
+```sh
+node -p "process.platform + ' ' + process.arch"
+uname -m
+```
+
+On Apple Silicon, prefer native `arm64` for both. From a normal non-Rosetta terminal:
+
+```sh
+nvm install
+nvm use
+rm -rf node_modules
+npm install
+npm run build
+```
+
+If you intentionally use Rosetta/x64 Node, reinstall `node_modules` from that same x64 terminal instead. The important rule is that `node`, `npm install`, and `npm run build` must all use the same architecture.
 
 ### Copilot command not found
 

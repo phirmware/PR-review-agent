@@ -114,6 +114,18 @@ export interface AnalysePrResponse {
   worries: ReviewWorry[];
 }
 
+export interface AnalysePrTraceRequest extends PullRequestIdentity {}
+
+export interface AnalysePrTraceResponse {
+  impactChains: ImpactChain[];
+}
+
+export interface AnalysePrWorriesRequest extends PullRequestIdentity {}
+
+export interface AnalysePrWorriesResponse {
+  worries: ReviewWorry[];
+}
+
 export interface ExplainFileRequest extends PullRequestIdentity {
   file: string;
 }
@@ -222,7 +234,50 @@ export interface FileContextPack {
   callerHints: string[];
 }
 
-export interface AnalysePrProviderInput extends ProviderExecutionInput {}
+export interface PrContextChangedFile {
+  file: string;
+  additions: number;
+  deletions: number;
+  heuristicRisk: RiskLevel;
+  riskReason: string;
+  riskSignals: string[];
+  skimCandidate: boolean;
+}
+
+export interface PrContextFileDiff {
+  file: string;
+  diff: string;
+  truncated: boolean;
+}
+
+export interface PrContextDirectorySummary {
+  directory: string;
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
+export interface PrContextPack {
+  changedFileCount: number;
+  changedFiles: PrContextChangedFile[];
+  topRiskFiles: PrContextChangedFile[];
+  sampledFileDiffs: PrContextFileDiff[];
+  skimCandidates: string[];
+  likelyTestFiles: string[];
+  packageScripts: string[];
+  directorySummary: PrContextDirectorySummary[];
+  diffStat: string;
+  diffStatTruncated: boolean;
+  notes: string[];
+}
+
+export interface AnalysePrProviderInput extends ProviderExecutionInput {
+  contextPack?: PrContextPack;
+}
+
+export interface AnalysePrTraceProviderInput extends AnalysePrProviderInput {}
+
+export interface AnalysePrWorriesProviderInput extends AnalysePrProviderInput {}
 
 export interface ExplainFileProviderInput extends ProviderExecutionInput {
   file: string;

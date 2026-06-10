@@ -54,8 +54,40 @@ describe("MockProvider", () => {
     expect(result.prUnderstanding.affectedSystems.length).toBeGreaterThan(0);
     expect(result.reviewPlan[0].files.length).toBeGreaterThan(0);
     expect(result.changedFiles.some((file) => file.signals?.length)).toBe(true);
-    expect(result.impactChains[0].nodes.length).toBeGreaterThan(0);
-    expect(result.worries[0].suggestedCheck).toContain("Check");
+    expect(result.impactChains).toEqual([]);
+    expect(result.worries).toEqual([]);
+  });
+
+  it("generates lazy PR guide sections separately", async () => {
+    const repoPath = await makeChangedRepo();
+    const provider = new MockProvider();
+    const input = {
+      host: "github.com",
+      owner: "iag-loyalty",
+      repo: "rewards-service",
+      prNumber: 123,
+      worktreePath: repoPath,
+      baseRef: "HEAD~1",
+      headRef: "HEAD"
+    } as const;
+
+    await expect(provider.analysePrTrace(input)).resolves.toMatchObject({
+      impactChains: [
+        {
+          nodes: expect.arrayContaining(["package.json"])
+        }
+      ]
+    });
+
+    const worries = await provider.analysePrWorries(input);
+    expect(worries.worries.length).toBeGreaterThan(0);
+    expect(worries.worries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          suggestedCheck: expect.stringContaining("Check")
+        })
+      ])
+    );
   });
 
   it("supports explain-file and pre-approval checks", async () => {
