@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   analyseFileResponseSchema,
+  analysePrHeatmapResponseSchema,
+  analysePrPlanResponseSchema,
   analysePrResponseSchema,
   analysePrTraceResponseSchema,
   analysePrWorriesResponseSchema,
   askFileQuestionResponseSchema,
   extractJsonPayload,
+  pullRequestIdentitySchema,
   repoIdentitySchema
 } from "../src/schemas";
 
@@ -83,6 +86,56 @@ describe("schemas", () => {
 
   it("validates lazy PR guide section output", () => {
     expect(
+      analysePrPlanResponseSchema.parse({
+        reviewPlan: [
+          {
+            title: "Review API behavior",
+            reason: "API-facing code changed.",
+            files: ["src/api.ts"],
+            suggestedFocus: "Check callers and tests."
+          }
+        ]
+      })
+    ).toMatchObject({
+      reviewPlan: [
+        {
+          title: "Review API behavior"
+        }
+      ]
+    });
+
+    expect(
+      analysePrHeatmapResponseSchema.parse({
+        reviewOrder: [
+          {
+            file: "src/api.ts",
+            risk: "medium",
+            reason: "API-facing behavior changed.",
+            suggestedAction: "Review callers before skimming tests."
+          }
+        ],
+        skimFiles: ["src/api.test.ts"],
+        suggestedChecks: ["Run API tests."],
+        changedFiles: [
+          {
+            file: "src/api.ts",
+            additions: 3,
+            deletions: 1,
+            risk: "medium",
+            reason: "API-facing behavior changed.",
+            signals: ["API contract"]
+          }
+        ]
+      })
+    ).toMatchObject({
+      changedFiles: [
+        {
+          signals: ["API contract"]
+        }
+      ]
+    });
+
+    expect(
       analysePrTraceResponseSchema.parse({
         impactChains: [
           {
@@ -156,5 +209,19 @@ describe("schemas", () => {
         repo: "rewards-service"
       })
     ).toThrow();
+  });
+
+  it("accepts a normal base branch hint on PR requests", () => {
+    expect(
+      pullRequestIdentitySchema.parse({
+        host: "github.com",
+        owner: "iag-loyalty",
+        repo: "rewards-service",
+        prNumber: 123,
+        baseBranchHint: "release/dev"
+      })
+    ).toMatchObject({
+      baseBranchHint: "release/dev"
+    });
   });
 });

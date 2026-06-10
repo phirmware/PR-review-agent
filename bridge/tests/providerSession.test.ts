@@ -74,6 +74,32 @@ describe("provider sessions", () => {
     await expect(getProviderSessionId("copilot-cli", input)).resolves.not.toBe(first);
   });
 
+  it("changes session ID when the base ref moves and HEAD stays the same", async () => {
+    const repoPath = await makeRepo();
+    git(repoPath, ["branch", "base"]);
+    git(repoPath, ["checkout", "-b", "feature"]);
+    const input = {
+      host: "github.com",
+      owner: "iag-loyalty",
+      repo: "rewards-service",
+      prNumber: 123,
+      worktreePath: repoPath,
+      baseRef: "base",
+      headRef: "HEAD"
+    };
+    const featureHead = git(repoPath, ["rev-parse", "HEAD"]);
+    const first = await getProviderSessionId("copilot-cli", input);
+
+    git(repoPath, ["checkout", "base"]);
+    await fs.writeFile(path.join(repoPath, "base.txt"), "Base moved\n", "utf8");
+    git(repoPath, ["add", "base.txt"]);
+    git(repoPath, ["commit", "-m", "Move base"]);
+    git(repoPath, ["checkout", "feature"]);
+
+    expect(git(repoPath, ["rev-parse", "HEAD"])).toBe(featureHead);
+    await expect(getProviderSessionId("copilot-cli", input)).resolves.not.toBe(first);
+  });
+
   it("can be disabled with REVIEW_GUIDE_PROVIDER_SESSIONS=0", async () => {
     const repoPath = await makeRepo();
     process.env.REVIEW_GUIDE_PROVIDER_SESSIONS = "0";

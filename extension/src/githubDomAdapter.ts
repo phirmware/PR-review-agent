@@ -16,6 +16,40 @@ export interface GitHubFileHeader {
   titleElement: HTMLElement;
 }
 
+function cleanBranchLabel(value: string): string | null {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return null;
+  }
+
+  const withoutPrefix = compact.replace(/^base:\s*/i, "");
+  const branch = withoutPrefix.includes(":") ? withoutPrefix.split(":").at(-1)?.trim() : withoutPrefix;
+  return branch || null;
+}
+
+export function getGitHubPrBaseBranch(): string | null {
+  const selectors = [
+    ".base-ref",
+    "[class*='base-ref']",
+    "[data-testid='base-branch']",
+    "[aria-label*='base branch' i]"
+  ];
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+      const label = element.getAttribute("title") ?? element.getAttribute("aria-label") ?? element.textContent ?? "";
+      const branch = cleanBranchLabel(label);
+      if (branch) {
+        return branch;
+      }
+    }
+  }
+
+  const text = document.body.textContent?.replace(/\s+/g, " ") ?? "";
+  const match = text.match(/\binto\s+([A-Za-z0-9._/-]+)\s+from\b/i);
+  return match?.[1] ?? null;
+}
+
 export function ensureFloatingButton(onClick: () => void): HTMLButtonElement {
   let button = document.getElementById(DOM_IDS.button) as HTMLButtonElement | null;
   if (!button) {

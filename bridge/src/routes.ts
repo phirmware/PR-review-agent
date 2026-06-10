@@ -19,6 +19,8 @@ import { ProviderManager } from "./providerManager.js";
 import { assertBoundRepoPath, validateRepoBinding } from "./repoBinding.js";
 import {
   analyseFileResponseSchema,
+  analysePrHeatmapResponseSchema,
+  analysePrPlanResponseSchema,
   analysePrTraceResponseSchema,
   analysePrWorriesResponseSchema,
   bindRepoRequestSchema,
@@ -233,17 +235,61 @@ export function createApp() {
       const provider = await providerManager.getSelectedProvider();
       const prepared = await resolvePreparedContext(identity);
       const contextPack = await buildPrContextPack({
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
       });
       const result = await provider.analysePr({
-          ...identity,
-          contextPack,
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef,
-          headRef: prepared.headRef
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
       });
       response.json(validateProviderResult(analysePrResponseSchema, result));
+    } catch (error) {
+      sendError(response, error);
+    }
+  });
+
+  app.post("/analyse-pr-plan", async (request, response) => {
+    try {
+      const identity = pullRequestIdentitySchema.parse(request.body);
+      const provider = await providerManager.getSelectedProvider();
+      const prepared = await resolvePreparedContext(identity);
+      const contextPack = await buildPrContextPack({
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
+      });
+      const result = await provider.analysePrPlan({
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
+      });
+      response.json(validateProviderResult(analysePrPlanResponseSchema, result));
+    } catch (error) {
+      sendError(response, error);
+    }
+  });
+
+  app.post("/analyse-pr-heatmap", async (request, response) => {
+    try {
+      const identity = pullRequestIdentitySchema.parse(request.body);
+      const provider = await providerManager.getSelectedProvider();
+      const prepared = await resolvePreparedContext(identity);
+      const contextPack = await buildPrContextPack({
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
+      });
+      const result = await provider.analysePrHeatmap({
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
+      });
+      response.json(validateProviderResult(analysePrHeatmapResponseSchema, result));
     } catch (error) {
       sendError(response, error);
     }
@@ -255,15 +301,15 @@ export function createApp() {
       const provider = await providerManager.getSelectedProvider();
       const prepared = await resolvePreparedContext(identity);
       const contextPack = await buildPrContextPack({
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
       });
       const result = await provider.analysePrTrace({
-          ...identity,
-          contextPack,
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef,
-          headRef: prepared.headRef
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
       });
       response.json(validateProviderResult(analysePrTraceResponseSchema, result));
     } catch (error) {
@@ -277,15 +323,15 @@ export function createApp() {
       const provider = await providerManager.getSelectedProvider();
       const prepared = await resolvePreparedContext(identity);
       const contextPack = await buildPrContextPack({
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
       });
       const result = await provider.analysePrWorries({
-          ...identity,
-          contextPack,
-          worktreePath: prepared.worktreePath,
-          baseRef: prepared.baseRef,
-          headRef: prepared.headRef
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
       });
       response.json(validateProviderResult(analysePrWorriesResponseSchema, result));
     } catch (error) {

@@ -3,6 +3,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrHeatmapProviderInput,
+  AnalysePrHeatmapResponse,
+  AnalysePrPlanProviderInput,
+  AnalysePrPlanResponse,
   AnalysePrTraceProviderInput,
   AnalysePrTraceResponse,
   AnalysePrWorriesProviderInput,
@@ -21,6 +25,8 @@ import type { z } from "zod";
 import { AppError } from "../errors.js";
 import { runCommand } from "../git.js";
 import { buildAnalyseFilePrompt } from "../prompts/analyseFilePrompt.js";
+import { buildAnalysePrHeatmapPrompt } from "../prompts/analysePrHeatmapPrompt.js";
+import { buildAnalysePrPlanPrompt } from "../prompts/analysePrPlanPrompt.js";
 import { buildAnalysePrPrompt } from "../prompts/analysePrPrompt.js";
 import { buildAnalysePrTracePrompt } from "../prompts/analysePrTracePrompt.js";
 import { buildAnalysePrWorriesPrompt } from "../prompts/analysePrWorriesPrompt.js";
@@ -30,6 +36,8 @@ import { buildPreApprovalPrompt } from "../prompts/preApprovalPrompt.js";
 import { buildSuggestTestsPrompt } from "../prompts/suggestTestsPrompt.js";
 import {
   analyseFileResponseSchema,
+  analysePrHeatmapResponseSchema,
+  analysePrPlanResponseSchema,
   analysePrResponseSchema,
   analysePrTraceResponseSchema,
   analysePrWorriesResponseSchema,
@@ -73,7 +81,7 @@ async function runCopilot(prompt: string, input: ProviderExecutionInput): Promis
   const command = process.env.REVIEW_GUIDE_COPILOT_COMMAND ?? "copilot";
   const sessionId = await getProviderSessionId("copilot-cli", input);
   console.log(
-    `[bridge:provider] invoking copilot-cli in ${input.worktreePath}${sessionId ? ` with session ${sessionId}` : " without session reuse"}`
+    `[bridge:provider] invoking copilot-cli in ${input.worktreePath}${sessionId ? ` with session id ${sessionId}` : " without session id"}`
   );
 
   try {
@@ -116,6 +124,16 @@ export class CopilotCliProvider implements ReviewAgentProvider {
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const raw = await runCopilot(buildAnalysePrPrompt(input), input);
     return parseCopilotJson(raw, analysePrResponseSchema, "analyse-pr");
+  }
+
+  async analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse> {
+    const raw = await runCopilot(buildAnalysePrPlanPrompt(input), input);
+    return parseCopilotJson(raw, analysePrPlanResponseSchema, "analyse-pr-plan");
+  }
+
+  async analysePrHeatmap(input: AnalysePrHeatmapProviderInput): Promise<AnalysePrHeatmapResponse> {
+    const raw = await runCopilot(buildAnalysePrHeatmapPrompt(input), input);
+    return parseCopilotJson(raw, analysePrHeatmapResponseSchema, "analyse-pr-heatmap");
   }
 
   async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {

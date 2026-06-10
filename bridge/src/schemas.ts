@@ -14,8 +14,17 @@ export const repoIdentitySchema = z.object({
   repo: repoIdentityPartSchema
 });
 
+export const baseBranchHintSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(250)
+  .regex(/^[A-Za-z0-9._/-]+$/, "Use a normal branch name such as dev, main, or release/foo.")
+  .optional();
+
 export const pullRequestIdentitySchema = repoIdentitySchema.extend({
-  prNumber: z.coerce.number().int().positive()
+  prNumber: z.coerce.number().int().positive(),
+  baseBranchHint: baseBranchHintSchema
 });
 
 export const bindRepoRequestSchema = repoIdentitySchema.extend({
@@ -52,6 +61,20 @@ export const changedFileSchema = z.object({
   signals: z.array(z.string().min(1)).optional()
 });
 
+export const reviewPlanStepSchema = z.object({
+  title: z.string().min(1),
+  reason: z.string().min(1),
+  files: z.array(z.string().min(1)),
+  suggestedFocus: z.string().min(1)
+});
+
+export const reviewOrderItemSchema = z.object({
+  file: z.string().min(1),
+  risk: riskLevelSchema,
+  reason: z.string().min(1),
+  suggestedAction: z.string().min(1)
+});
+
 export const analysePrResponseSchema = z.object({
   summary: z.string().min(1),
   prUnderstanding: z.object({
@@ -60,22 +83,8 @@ export const analysePrResponseSchema = z.object({
     potentialRisks: z.array(z.string().min(1)),
     keyBehaviorChanges: z.array(z.string().min(1))
   }),
-  reviewPlan: z.array(
-    z.object({
-      title: z.string().min(1),
-      reason: z.string().min(1),
-      files: z.array(z.string().min(1)),
-      suggestedFocus: z.string().min(1)
-    })
-  ),
-  reviewOrder: z.array(
-    z.object({
-      file: z.string().min(1),
-      risk: riskLevelSchema,
-      reason: z.string().min(1),
-      suggestedAction: z.string().min(1)
-    })
-  ),
+  reviewPlan: z.array(reviewPlanStepSchema),
+  reviewOrder: z.array(reviewOrderItemSchema),
   skimFiles: z.array(z.string().min(1)),
   suggestedChecks: z.array(z.string().min(1)),
   changedFiles: z.array(changedFileSchema),
@@ -96,6 +105,17 @@ export const analysePrResponseSchema = z.object({
       risk: riskLevelSchema
     })
   )
+});
+
+export const analysePrPlanResponseSchema = z.object({
+  reviewPlan: z.array(reviewPlanStepSchema)
+});
+
+export const analysePrHeatmapResponseSchema = z.object({
+  reviewOrder: z.array(reviewOrderItemSchema),
+  skimFiles: z.array(z.string().min(1)),
+  suggestedChecks: z.array(z.string().min(1)),
+  changedFiles: z.array(changedFileSchema)
 });
 
 export const analysePrTraceResponseSchema = z.object({

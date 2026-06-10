@@ -3,6 +3,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrHeatmapProviderInput,
+  AnalysePrHeatmapResponse,
+  AnalysePrPlanProviderInput,
+  AnalysePrPlanResponse,
   AnalysePrTraceProviderInput,
   AnalysePrTraceResponse,
   AnalysePrWorriesProviderInput,
@@ -22,6 +26,8 @@ import { AppError } from "../errors.js";
 import { runCommand } from "../git.js";
 import {
   analysePrResponseSchema,
+  analysePrHeatmapResponseSchema,
+  analysePrPlanResponseSchema,
   analysePrTraceResponseSchema,
   analysePrWorriesResponseSchema,
   analyseFileResponseSchema,
@@ -32,6 +38,8 @@ import {
   suggestTestsResponseSchema
 } from "../schemas.js";
 import { buildAnalysePrPrompt } from "../prompts/analysePrPrompt.js";
+import { buildAnalysePrHeatmapPrompt } from "../prompts/analysePrHeatmapPrompt.js";
+import { buildAnalysePrPlanPrompt } from "../prompts/analysePrPlanPrompt.js";
 import { buildAnalysePrTracePrompt } from "../prompts/analysePrTracePrompt.js";
 import { buildAnalysePrWorriesPrompt } from "../prompts/analysePrWorriesPrompt.js";
 import { buildAnalyseFilePrompt } from "../prompts/analyseFilePrompt.js";
@@ -55,7 +63,7 @@ async function runClaude(prompt: string, input: ProviderExecutionInput): Promise
   const command = process.env.REVIEW_GUIDE_CLAUDE_COMMAND ?? "claude";
   const sessionId = await getProviderSessionId("claude-code", input);
   console.log(
-    `[bridge:provider] invoking claude-code in ${input.worktreePath}${sessionId ? ` with session ${sessionId}` : " without session reuse"}`
+    `[bridge:provider] invoking claude-code in ${input.worktreePath}${sessionId ? ` with session id ${sessionId}` : " without session id"}`
   );
   const result = await runCommand(command, getClaudeCommandArgs(prompt, sessionId), {
     cwd: input.worktreePath,
@@ -85,6 +93,16 @@ export class ClaudeCodeProvider implements ReviewAgentProvider {
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const raw = await runClaude(buildAnalysePrPrompt(input), input);
     return parseClaudeJson(raw, analysePrResponseSchema, "analyse-pr");
+  }
+
+  async analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse> {
+    const raw = await runClaude(buildAnalysePrPlanPrompt(input), input);
+    return parseClaudeJson(raw, analysePrPlanResponseSchema, "analyse-pr-plan");
+  }
+
+  async analysePrHeatmap(input: AnalysePrHeatmapProviderInput): Promise<AnalysePrHeatmapResponse> {
+    const raw = await runClaude(buildAnalysePrHeatmapPrompt(input), input);
+    return parseClaudeJson(raw, analysePrHeatmapResponseSchema, "analyse-pr-heatmap");
   }
 
   async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {

@@ -69,7 +69,51 @@ async function resolveDefaultBaseBranch(localPath: string, remoteName: string): 
   return match?.[1] ?? null;
 }
 
-async function resolvePrBaseRef(binding: RepoBinding, remoteName: string, prNumber: number): Promise<string> {
+function normalizeBaseBranchHint(baseBranchHint: string | undefined, remoteName: string): string | null {
+  let branch = baseBranchHint?.trim();
+  if (!branch) {
+    return null;
+  }
+
+  if (branch.startsWith(`${remoteName}/`)) {
+    branch = branch.slice(remoteName.length + 1);
+  }
+
+  if (branch.startsWith("refs/heads/")) {
+    branch = branch.slice("refs/heads/".length);
+  }
+
+  const invalid =
+    !branch ||
+    branch.startsWith("/") ||
+    branch.endsWith("/") ||
+    branch.startsWith(".") ||
+    branch.endsWith(".") ||
+    branch.includes("..") ||
+    branch.includes("//") ||
+    branch.includes("@{") ||
+    branch.endsWith(".lock") ||
+    /[\s\\~^:?*[\]\x00-\x1f\x7f]/.test(branch);
+
+  if (invalid) {
+    throw new AppError(`Invalid base branch hint: ${baseBranchHint}`, 400);
+  }
+
+  return branch;
+}
+
+async function resolvePrBaseRef(
+  binding: RepoBinding,
+  remoteName: string,
+  prNumber: number,
+  baseBranchHint?: string
+): Promise<string> {
+  const normalizedHint = normalizeBaseBranchHint(baseBranchHint, remoteName);
+  if (normalizedHint) {
+    console.log(`[bridge:worktree] using base branch hint ${normalizedHint} for ${binding.owner}/${binding.repo}#${prNumber}`);
+    return `${remoteName}/${normalizedHint}`;
+  }
+
   const ghResult = await runCommand(
     "gh",
     ["pr", "view", String(prNumber), "--repo", `${binding.owner}/${binding.repo}`, "--json", "baseRefName"],
@@ -235,15 +279,15 @@ export async function preparePrWorktree(
   identity: PullRequestIdentity
 ): Promise<PreparePrWorktreeResponse> {
   const remoteName = await getMatchingRemoteName(binding);
-  const baseRef = await resolvePrBaseRef(binding, remoteName, identity.prNumber);
+  const baseRef = await resolvePrBaseRef(binding, remoteName, identity.prNumber, identity.baseBranchHint);
   const prRef = `refs/review-guide/pr-${identity.prNumber}`;
   const worktreePath = getManagedWorktreePath(identity);
 
   await fs.mkdir(path.dirname(worktreePath), { recursive: true });
   console.log(`[bridge:worktree] fetching base ref ${baseRef} for ${identity.owner}/${identity.repo}#${identity.prNumber}`);
   await runCommand("git", ["fetch", remoteName, baseRef.replace(`${remoteName}/`, "")], { cwd: binding.localPath });
-  console.log(`[bridge:worktree] fetching PR ref pull/${identity.prNumber}/head -> ${prRef}`);
-  await runCommand("git", ["fetch", remoteName, `pull/${identity.prNumber}/head:${prRef}`], {
+  console.log(`[bridge:worktree] fetching PR ref pull/${identity.prNumber}/head -> ${prRef} (force-updating managed ref)`);
+  await runCommand("git", ["fetch", remoteName, `+pull/${identity.prNumber}/head:${prRef}`], {
     cwd: binding.localPath
   });
 

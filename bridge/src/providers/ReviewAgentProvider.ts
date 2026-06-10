@@ -3,6 +3,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrHeatmapProviderInput,
+  AnalysePrHeatmapResponse,
+  AnalysePrPlanProviderInput,
+  AnalysePrPlanResponse,
   AnalysePrTraceProviderInput,
   AnalysePrTraceResponse,
   AnalysePrWorriesProviderInput,
@@ -21,6 +25,8 @@ import type {
 export interface ReviewAgentProvider {
   name: ProviderName;
   analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse>;
+  analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse>;
+  analysePrHeatmap(input: AnalysePrHeatmapProviderInput): Promise<AnalysePrHeatmapResponse>;
   analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse>;
   analysePrWorries(input: AnalysePrWorriesProviderInput): Promise<AnalysePrWorriesResponse>;
   analyseFile(input: AnalyseFileProviderInput): Promise<AnalyseFileResponse>;

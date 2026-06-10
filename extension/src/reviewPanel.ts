@@ -34,6 +34,7 @@ export interface PanelState {
   };
   activeGuideSection?: GuideSectionId;
   loadedGuideSections?: Partial<Record<GuideSectionId, boolean>>;
+  loadingGuideSections?: Partial<Record<GuideSectionId, boolean>>;
   availableProviders?: ProviderName[];
   analysis?: AnalysePrResponse | null;
   activeFile?: string | null;
@@ -44,6 +45,7 @@ export interface PanelState {
   analysedFiles: string[];
   loadingAction?: string | null;
   localRepoPathInput: string;
+  baseBranchHintInput?: string;
 }
 
 export interface ReviewPanelCallbacks {
@@ -62,6 +64,7 @@ export interface ReviewPanelCallbacks {
   onProviderChange(provider: ProviderName): void;
   onSelectGuideSection(section: GuideSectionId): void;
   onLoadGuideSection(section: GuideSectionId): void;
+  onBaseBranchHintInput(value: string): void;
 }
 
 function escapeHtml(value: string): string {
@@ -82,6 +85,13 @@ function renderList(items: string[], emptyText: string): string {
   }
 
   return `<ul class="rg-review-guide__list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function renderSectionHeading(title: string, description?: string): string {
+  return `<div class="rg-review-guide__section-heading-block">
+    <div class="rg-review-guide__section-heading">${escapeHtml(title)}</div>
+    ${description ? `<div class="rg-review-guide__section-description">${escapeHtml(description)}</div>` : ""}
+  </div>`;
 }
 
 function renderFileChips(files: string[], emptyText = "No specific files called out."): string {
@@ -118,9 +128,9 @@ function renderLazySectionState(section: GuideSectionId, title: string, isLoadin
   }
 
   if (!isLoaded) {
-    return `<div class="rg-review-guide__insight">
+    return `<div class="rg-review-guide__empty-state">
       <strong>${escapeHtml(title)} loads on demand</strong>
-      <p>This section uses a separate provider request so the initial PR overview can appear faster.</p>
+      <p>Runs a focused provider pass for this section.</p>
       <button class="rg-review-guide__primary" data-rg-action="load-guide-section" data-rg-section="${section}">Generate ${escapeHtml(
         title
       )}</button>
@@ -216,19 +226,22 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
   } ${state.reviewedFiles.includes(item.file) ? "rg-review-guide__queue-item--reviewed" : ""}" data-rg-action="select-file" data-rg-file="${escapeHtml(
     item.file
   )}">
-    <span>${escapeHtml(item.file)}</span>
+    <span class="rg-review-guide__queue-main">
+      <span class="rg-review-guide__queue-title">${escapeHtml(item.file)}</span>
+      <span class="rg-review-guide__queue-reason">${escapeHtml(item.reason)}</span>
+    </span>
     <span class="rg-review-guide__queue-meta">
       <span class="rg-review-guide__risk rg-review-guide__risk--${item.risk}">${item.risk}</span>
-      <span>${state.reviewedFiles.includes(item.file) ? "Reviewed" : "Analyze"}</span>
+      <span>${state.reviewedFiles.includes(item.file) ? "Reviewed" : "Open"}</span>
     </span>
   </button>`;
 
   if (activeSection === "understanding") {
     return `<div class="rg-review-guide__guide-section">
-      <div class="rg-review-guide__section-heading">PR Understanding</div>
+      ${renderSectionHeading("PR Understanding", "Purpose, affected areas, and the behavior this PR is likely changing.")}
       <div class="rg-review-guide__insight">
         <strong>Purpose</strong>
-        <p>${escapeHtml(analysis.prUnderstanding.purpose)}</p>
+        <p class="rg-review-guide__lead-text">${escapeHtml(analysis.prUnderstanding.purpose)}</p>
       </div>
       <div class="rg-review-guide__subsection">
         <strong>Affected systems</strong>
@@ -246,25 +259,36 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
   }
 
   if (activeSection === "plan") {
+    const isLoading = Boolean(state.loadingGuideSections?.plan);
+    const isLoaded = Boolean(state.loadedGuideSections?.plan || analysis.reviewPlan.length > 0);
+    const lazyState = renderLazySectionState("plan", "Review Plan", isLoading, isLoaded);
     return `<div class="rg-review-guide__guide-section">
-      <div class="rg-review-guide__section-heading">Review Plan</div>
-      ${analysis.reviewPlan
-        .map(
-          (step, index) => `<div class="rg-review-guide__plan-step">
-            <div class="rg-review-guide__step-number">${index + 1}</div>
-            <div>
-              <strong>${escapeHtml(step.title)}</strong>
-              <p>${escapeHtml(step.reason)}</p>
-              <div class="rg-review-guide__muted">${escapeHtml(step.suggestedFocus)}</div>
-              ${renderFileChips(step.files)}
-            </div>
-          </div>`
-        )
-        .join("")}
+      ${renderSectionHeading("Review Plan", "A suggested path through the review, ordered by where attention is most useful.")}
+      ${
+        lazyState ||
+        (analysis.reviewPlan.length > 0
+          ? analysis.reviewPlan
+              .map(
+                (step, index) => `<div class="rg-review-guide__plan-step">
+                  <div class="rg-review-guide__step-number">${index + 1}</div>
+                  <div>
+                    <strong>${escapeHtml(step.title)}</strong>
+                    <p>${escapeHtml(step.reason)}</p>
+                    <div class="rg-review-guide__muted">${escapeHtml(step.suggestedFocus)}</div>
+                    ${renderFileChips(step.files)}
+                  </div>
+                </div>`
+              )
+              .join("")
+          : `<div class="rg-review-guide__muted">No review plan was returned by the provider.</div>`)
+      }
     </div>`;
   }
 
   if (activeSection === "heatmap") {
+    const isLoading = Boolean(state.loadingGuideSections?.heatmap);
+    const isLoaded = Boolean(state.loadedGuideSections?.heatmap || reviewFiles.length > 0);
+    const lazyState = renderLazySectionState("heatmap", "Risk Heatmap", isLoading, isLoaded);
     const grouped = {
       high: reviewFiles.filter((file) => file.risk === "high"),
       medium: reviewFiles.filter((file) => file.risk === "medium"),
@@ -295,35 +319,53 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
     </div>`;
 
     return `<div class="rg-review-guide__guide-section">
-      <div class="rg-review-guide__section-heading">Risk Heatmap</div>
-      ${renderRiskGroup("High risk", "high", grouped.high)}
-      ${renderRiskGroup("Medium risk", "medium", grouped.medium)}
-      ${renderRiskGroup("Low risk", "low", grouped.low)}
-      <div class="rg-review-guide__heatmap-group">
-        <div class="rg-review-guide__heatmap-title">
-          <span class="rg-review-guide__risk rg-review-guide__risk--low">Skim</span>
-          <span class="rg-review-guide__muted">${grouped.skim.length} file(s)</span>
+      ${renderSectionHeading("Risk Heatmap", "Changed files grouped by likely review risk.")}
+      ${
+        lazyState ||
+        `${renderRiskGroup("High risk", "high", grouped.high)}
+        ${renderRiskGroup("Medium risk", "medium", grouped.medium)}
+        ${renderRiskGroup("Low risk", "low", grouped.low)}
+        <div class="rg-review-guide__heatmap-group">
+          <div class="rg-review-guide__heatmap-title">
+            <span class="rg-review-guide__risk rg-review-guide__risk--low">Skim</span>
+            <span class="rg-review-guide__muted">${grouped.skim.length} file(s)</span>
+          </div>
+          ${renderFileChips(grouped.skim, "No files were marked safe to skim.")}
         </div>
-        ${renderFileChips(grouped.skim, "No files were marked safe to skim.")}
-      </div>
+        `
+      }
     </div>`;
   }
 
   if (activeSection === "files") {
+    const isLoading = Boolean(state.loadingGuideSections?.heatmap || state.loadingGuideSections?.files);
+    const isLoaded = Boolean(state.loadedGuideSections?.files || state.loadedGuideSections?.heatmap || reviewFiles.length > 0);
+    if (!isLoaded || isLoading) {
+      return `<div class="rg-review-guide__guide-section">
+        ${renderSectionHeading("Files", "Open a focused analysis for one file at a time and keep track of review progress.")}
+        ${renderLazySectionState("files", "Files", isLoading, isLoaded)}
+      </div>`;
+    }
+
     const currentFile = state.activeFile && reviewFiles.some((file) => file.file === state.activeFile)
       ? state.activeFile
       : reviewFiles[0]?.file;
-    const currentFileRisk = reviewFiles.find((file) => file.file === currentFile)?.risk ?? "low";
-    const topRiskFiles = [...reviewFiles].sort((left, right) => getRiskRank(right.risk) - getRiskRank(left.risk)).slice(0, 5);
+    const currentFileDetails = reviewFiles.find((file) => file.file === currentFile);
+    const currentFileRisk = currentFileDetails?.risk ?? "low";
 
     return `<div class="rg-review-guide__guide-section">
-      <div class="rg-review-guide__section-heading">Files</div>
+      ${renderSectionHeading("Files", "Open a focused analysis for one file at a time and keep track of review progress.")}
       ${
         currentFile
           ? `<div class="rg-review-guide__current-file">
               <div>
                 <strong>Current file</strong>
                 <div class="rg-review-guide__muted">${escapeHtml(currentFile)}</div>
+                ${
+                  currentFileDetails?.reason
+                    ? `<p class="rg-review-guide__current-file-reason">${escapeHtml(currentFileDetails.reason)}</p>`
+                    : ""
+                }
               </div>
               <div class="rg-review-guide__current-file-actions">
                 <button data-rg-action="previous-file">Previous</button>
@@ -337,30 +379,28 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
           : `<div class="rg-review-guide__muted">No changed files were returned by the provider.</div>`
       }
       <div class="rg-review-guide__subsection">
-        <strong>All changed files</strong>
-        <div class="rg-review-guide__queue">${reviewFiles.map(renderQueueItem).join("")}</div>
-      </div>
-      <div class="rg-review-guide__subsection">
-        <strong>Highest-risk files</strong>
-        <div class="rg-review-guide__queue">${topRiskFiles.map(renderQueueItem).join("")}</div>
-      </div>
-      <div class="rg-review-guide__subsection">
         <strong>Analyzed files</strong>
         ${renderAnalysedFilesQueue(state)}
       </div>
       <div class="rg-review-guide__subsection">
+        <strong>All changed files</strong>
+        <div class="rg-review-guide__queue rg-review-guide__queue--comfortable">${reviewFiles.map(renderQueueItem).join("")}</div>
+      </div>
+      <div class="rg-review-guide__subsection">
         <strong>Suggested checks</strong>
-        <div>${analysis.suggestedChecks.map((item) => `<span class="rg-review-guide__pill">${escapeHtml(item)}</span>`).join("")}</div>
+        <div class="rg-review-guide__pill-row">${analysis.suggestedChecks
+          .map((item) => `<span class="rg-review-guide__pill">${escapeHtml(item)}</span>`)
+          .join("")}</div>
       </div>
     </div>`;
   }
 
   if (activeSection === "trace") {
-    const isLoading = state.loadingAction === "guide:trace";
+    const isLoading = Boolean(state.loadingGuideSections?.trace || state.loadingAction === "guide:trace");
     const isLoaded = Boolean(state.loadedGuideSections?.trace || analysis.impactChains.length > 0);
     const lazyState = renderLazySectionState("trace", "Change Tracing", isLoading, isLoaded);
     return `<div class="rg-review-guide__guide-section">
-      <div class="rg-review-guide__section-heading">Change Tracing</div>
+      ${renderSectionHeading("Change Tracing", "How changes appear to flow across files and layers.")}
       ${
         lazyState ||
         (analysis.impactChains.length > 0
@@ -383,11 +423,11 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
     </div>`;
   }
 
-  const isWorriesLoading = state.loadingAction === "guide:worries";
+  const isWorriesLoading = Boolean(state.loadingGuideSections?.worries || state.loadingAction === "guide:worries");
   const worriesLoaded = Boolean(state.loadedGuideSections?.worries || analysis.worries.length > 0);
   const worriesLazyState = renderLazySectionState("worries", "Worries", isWorriesLoading, worriesLoaded);
   return `<div class="rg-review-guide__guide-section">
-    <div class="rg-review-guide__section-heading">What To Worry About</div>
+    ${renderSectionHeading("What To Worry About", "Likely bugs, risky assumptions, and checks worth doing before approval.")}
     ${
       worriesLazyState ||
       (analysis.worries.length > 0
@@ -433,11 +473,17 @@ function renderAnalysisSection(state: PanelState): string {
 
   if (reviewFiles.length === 0) {
     return `<div class="rg-review-guide__section">
-      <div><strong>Guided review</strong></div>
+      <div class="rg-review-guide__review-hero">
+        <div>
+          <div class="rg-review-guide__eyebrow">Guided PR review</div>
+          <p>${escapeHtml(state.analysis.summary)}</p>
+        </div>
+        <div class="rg-review-guide__review-hero-actions">
+          <div class="rg-review-guide__muted">File guidance loading</div>
+        </div>
+      </div>
       ${renderGuideNav(state.activeGuideSection ?? "understanding")}
       ${renderGuideContent(state, reviewFiles)}
-      <p class="rg-review-guide__muted">${escapeHtml(state.analysis.summary)}</p>
-      <div class="rg-review-guide__muted">No changed files were returned by the provider.</div>
     </div>`;
   }
 
@@ -453,14 +499,17 @@ function renderAnalysisSection(state: PanelState): string {
   const activeSection = state.activeGuideSection ?? "understanding";
 
   return `<div class="rg-review-guide__section">
-    <div class="rg-review-guide__review-header">
+    <div class="rg-review-guide__review-hero">
       <div>
-        <div><strong>Guided PR review</strong></div>
-        <div class="rg-review-guide__muted">${reviewedCount}/${reviewFiles.length} files reviewed</div>
+        <div class="rg-review-guide__eyebrow">Guided PR review</div>
+        <p>${escapeHtml(state.analysis.summary)}</p>
       </div>
-      <button class="rg-review-guide__primary" data-rg-action="pre-approval" ${
-        state.loadingAction === "pre-approval" ? "disabled" : ""
-      }>Pre-approval</button>
+      <div class="rg-review-guide__review-hero-actions">
+        <div class="rg-review-guide__muted">${reviewedCount}/${reviewFiles.length} files reviewed</div>
+        <button class="rg-review-guide__primary" data-rg-action="pre-approval" ${
+          state.loadingAction === "pre-approval" ? "disabled" : ""
+        }>Pre-approval</button>
+      </div>
     </div>
     <div class="rg-review-guide__progress" aria-label="${progressPercent}% reviewed">
       <div class="rg-review-guide__progress-fill" style="width: ${progressPercent}%"></div>
@@ -472,7 +521,6 @@ function renderAnalysisSection(state: PanelState): string {
       <div><strong>${riskCounts.low}</strong><span>low</span></div>
     </div>
 
-    <p class="rg-review-guide__muted">${escapeHtml(state.analysis.summary)}</p>
     ${renderGuideNav(activeSection)}
     ${renderGuideContent(state, reviewFiles)}
   </div>`;
@@ -584,6 +632,9 @@ export class ReviewPanel {
       if (target?.getAttribute("data-rg-input") === "local-path") {
         this.callbacks.onLocalRepoPathInput(target.value);
       }
+      if (target?.getAttribute("data-rg-input") === "base-branch") {
+        this.callbacks.onBaseBranchHintInput(target.value);
+      }
     });
 
     this.element.addEventListener("change", (event) => {
@@ -642,18 +693,20 @@ export class ReviewPanel {
 
     const preApprovalSection = state.preApproval
       ? `<div class="rg-review-guide__section">
-          <div><strong>Pre-approval check</strong></div>
-          <div class="rg-review-guide__muted">${escapeHtml(state.preApproval.summary)}</div>
-          <div class="rg-review-guide__pill rg-review-guide__pill--recommendation">${escapeHtml(
+          ${renderSectionHeading("Pre-approval check")}
+          <p class="rg-review-guide__body-text">${escapeHtml(state.preApproval.summary)}</p>
+          <div class="rg-review-guide__pill-row"><span class="rg-review-guide__pill rg-review-guide__pill--recommendation">${escapeHtml(
             state.preApproval.recommendation
-          )}</div>
+          )}</span></div>
           ${
             state.preApproval.remainingRisks.length > 0
               ? state.preApproval.remainingRisks
                   .map(
-                    (item) => `<div class="rg-review-guide__muted">${escapeHtml(item.file)} - ${escapeHtml(
-                      item.risk
-                    )}: ${escapeHtml(item.reason)}</div>`
+                    (item) => `<div class="rg-review-guide__risk-note">
+                      <strong>${escapeHtml(item.file)}</strong>
+                      <span class="rg-review-guide__risk rg-review-guide__risk--${item.risk}">${escapeHtml(item.risk)}</span>
+                      <p>${escapeHtml(item.reason)}</p>
+                    </div>`
                   )
                   .join("")
               : `<div class="rg-review-guide__muted">No remaining medium/high unreviewed files.</div>`
@@ -665,9 +718,11 @@ export class ReviewPanel {
       <div class="rg-review-guide__panel-header">
         <div>
           <div class="rg-review-guide__title">Review Guide</div>
-          <div class="rg-review-guide__muted">
-            Bridge: ${escapeHtml(state.bridgeStatus)}
-            ${state.health?.provider ? `- provider ${escapeHtml(state.health.provider)}` : ""}
+          <div class="rg-review-guide__status-row">
+            <span class="rg-review-guide__status-chip rg-review-guide__status-chip--${escapeHtml(state.bridgeStatus)}">${escapeHtml(
+              state.bridgeStatus
+            )}</span>
+            ${state.health?.provider ? `<span class="rg-review-guide__status-chip">${escapeHtml(state.health.provider)}</span>` : ""}
           </div>
         </div>
         <button data-rg-action="close">Close</button>
@@ -684,6 +739,13 @@ export class ReviewPanel {
               <div class="rg-review-guide__muted">${escapeHtml(
                 `${state.pr.host}/${state.pr.owner}/${state.pr.repo}#${state.pr.prNumber}`
               )}</div>
+              <label class="rg-review-guide__field rg-review-guide__field--spaced">
+                <span>Target branch</span>
+                <input class="rg-review-guide__input" data-rg-input="base-branch" value="${escapeHtml(
+                  state.baseBranchHintInput ?? state.pr.baseBranchHint ?? ""
+                )}" placeholder="dev" />
+              </label>
+              <div class="rg-review-guide__muted">Detected from the GitHub PR page when available. Override if it looks wrong.</div>
             </div>`
           : ""
       }

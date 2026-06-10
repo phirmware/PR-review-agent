@@ -4,6 +4,7 @@ import {
   applyFileReviewControls,
   applyRiskBadges,
   getCurrentGitHubFileInViewport,
+  getGitHubPrBaseBranch,
   getGitHubFileHeaders
 } from "../src/githubDomAdapter";
 import type { AnalysePrResponse } from "@review-guide/shared";
@@ -118,5 +119,16 @@ describe("githubDomAdapter", () => {
     const button = document.querySelector<HTMLButtonElement>("[data-rg-file-review='true']");
     expect(button?.textContent).toBe("Reviewed");
     expect(button?.dataset.rgFile).toBe("src/api.ts");
+  });
+
+  it("detects the PR target branch from GitHub PR header markup", () => {
+    installDom(`
+      <div>
+        <span class="commit-ref base-ref">iag-loyalty:dev</span>
+        <span class="commit-ref head-ref">feature-branch</span>
+      </div>
+    `);
+
+    expect(getGitHubPrBaseBranch()).toBe("dev");
   });
 });

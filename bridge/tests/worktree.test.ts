@@ -53,6 +53,7 @@ async function makeRepoWithPrRef(): Promise<WorktreeFixture> {
   git(localPath, ["add", "README.md"]);
   git(localPath, ["commit", "-m", "Initial commit"]);
   git(localPath, ["push", "origin", "HEAD:main"]);
+  git(localPath, ["push", "origin", "HEAD:dev"]);
   git(localPath, ["remote", "set-head", "origin", "main"]);
 
   git(localPath, ["checkout", "-b", "feature"]);
@@ -117,6 +118,23 @@ describe("managed worktree paths", () => {
     );
   });
 
+  it("uses a supplied base branch hint for the PR diff base", async () => {
+    const fixture = await makeRepoWithPrRef();
+    const result = await preparePrWorktree(
+      {
+        ...fixture.identity,
+        localPath: fixture.localPath,
+        remoteUrl: fixture.remoteUrl
+      },
+      {
+        ...fixture.identity,
+        baseBranchHint: "dev"
+      }
+    );
+
+    expect(result.baseRef).toBe("origin/dev");
+  });
+
   it("reuses an existing managed PR worktree when the fetched PR ref SHA is unchanged", async () => {
     const fixture = await makeRepoWithPrRef();
     const first = await prepareFixtureWorktree(fixture);
@@ -158,6 +176,27 @@ describe("managed worktree paths", () => {
     const second = await prepareFixtureWorktree(fixture);
 
     await expect(fs.stat(markerPath)).rejects.toThrow();
+    expect(git(second.worktreePath, ["rev-parse", "HEAD"])).toBe(git(fixture.localPath, ["rev-parse", "HEAD"]));
+  });
+
+  it("handles a force-pushed PR head by force-updating the managed PR ref", async () => {
+    const fixture = await makeRepoWithPrRef();
+    const first = await prepareFixtureWorktree(fixture);
+    const firstHead = git(first.worktreePath, ["rev-parse", "HEAD"]);
+    const markerPath = path.join(first.worktreePath, ".review-guide-reuse-marker");
+    await fs.writeFile(markerPath, "removed\n", "utf8");
+
+    git(fixture.localPath, ["checkout", "feature"]);
+    git(fixture.localPath, ["reset", "--hard", "HEAD~1"]);
+    await fs.writeFile(path.join(fixture.localPath, "feature.txt"), "Rewritten PR head\n", "utf8");
+    git(fixture.localPath, ["add", "feature.txt"]);
+    git(fixture.localPath, ["commit", "-m", "Rewritten PR head"]);
+    git(fixture.localPath, ["push", "--force", "origin", "HEAD:refs/pull/123/head"]);
+
+    const second = await prepareFixtureWorktree(fixture);
+
+    await expect(fs.stat(markerPath)).rejects.toThrow();
+    expect(git(second.worktreePath, ["rev-parse", "HEAD"])).not.toBe(firstHead);
     expect(git(second.worktreePath, ["rev-parse", "HEAD"])).toBe(git(fixture.localPath, ["rev-parse", "HEAD"]));
   });
 });

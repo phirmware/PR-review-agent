@@ -15,13 +15,13 @@ function providerSessionsEnabled(): boolean {
   return raw !== "0" && raw !== "false" && raw !== "off";
 }
 
-async function resolveWorktreeHeadSha(worktreePath: string): Promise<string> {
-  const result = await runCommand("git", ["rev-parse", "--verify", "HEAD"], {
+async function resolveGitSha(worktreePath: string, ref: string, fallback: string): Promise<string> {
+  const result = await runCommand("git", ["rev-parse", "--verify", ref], {
     cwd: worktreePath,
     allowNonZeroExit: true
   });
 
-  return result.exitCode === 0 && result.stdout ? result.stdout : "unknown-head";
+  return result.exitCode === 0 && result.stdout ? result.stdout : fallback;
 }
 
 export async function getProviderSessionId(
@@ -33,7 +33,8 @@ export async function getProviderSessionId(
     return null;
   }
 
-  const headSha = await resolveWorktreeHeadSha(input.worktreePath);
+  const baseSha = await resolveGitSha(input.worktreePath, input.baseRef, `unknown-base:${input.baseRef}`);
+  const headSha = await resolveGitSha(input.worktreePath, "HEAD", "unknown-head");
   const sessionId = uuidFromString(
     [
       "review-guide",
@@ -43,11 +44,12 @@ export async function getProviderSessionId(
       input.repo,
       String(input.prNumber),
       input.baseRef,
+      baseSha,
       headSha
     ].join(":")
   );
   console.log(
-    `[bridge:provider-session] reusing provider session ${sessionId} for ${provider} ${input.owner}/${input.repo}#${input.prNumber} head=${headSha}`
+    `[bridge:provider-session] using deterministic session id ${sessionId} for ${provider} ${input.owner}/${input.repo}#${input.prNumber} base=${input.baseRef}@${baseSha} head=${headSha}`
   );
   return sessionId;
 }

@@ -128,7 +128,8 @@ After code changes, click **Reload** on the unpacked extension and refresh the G
 4. If the repo is not bound, enter your local checkout path.
 5. Click **Connect repo**.
 6. Choose a provider from the dropdown.
-7. Analyze a file from the panel, the GitHub file header, or the highlight/right-click flow.
+7. Click **Analyse PR** to generate the guided overview.
+8. Analyze individual files from the panel, the GitHub file header, or the highlight/right-click flow.
 
 The extension never reads your filesystem. The bridge owns all filesystem and git access.
 
@@ -245,10 +246,10 @@ Custom args replace the default args, so include provider-specific session flags
 By default, real providers use deterministic session IDs keyed by:
 
 ```text
-provider + host + owner + repo + PR number + base ref + worktree HEAD SHA
+provider + host + owner + repo + PR number + base ref + base SHA + worktree HEAD SHA
 ```
 
-That lets Copilot or Claude reuse provider-side session context across repeated requests for the same PR head. When the PR changes, the worktree HEAD SHA changes and a fresh provider session is used automatically.
+That gives Copilot or Claude a stable session ID so they can create or resume provider-side session context across repeated requests for the same PR state. When the PR changes, the worktree HEAD SHA changes. When the target branch moves, the base SHA changes. Either case produces a different session ID automatically.
 
 Disable provider session reuse:
 
@@ -262,17 +263,20 @@ Common review flow:
 
 1. Open a PR.
 2. Click **Review Guide**.
-3. Select `copilot-cli`, `claude-code`, or `mock`.
-4. Click **Analyse PR** for a high-level review map, or analyze files one by one.
-5. Open file analysis from:
+3. Confirm the detected **Target branch**. The extension reads this from the GitHub PR page when possible, such as `dev`, and you can override it before analysis.
+4. Select `copilot-cli`, `claude-code`, or `mock`.
+5. Click **Analyse PR** for a high-level review map, or analyze files one by one.
+6. Open file analysis from:
    - the panel file list
    - the GitHub file header button
    - highlighted file path plus right-click **Analyze selected file**
-6. Ask follow-up questions in the file popover.
-7. Mark files reviewed.
-8. Run a pre-approval check.
+7. Ask follow-up questions in the file popover.
+8. Mark files reviewed.
+9. Run a pre-approval check.
 
 Analyzed files are kept in memory for the current page session. If you close the file popover or panel without refreshing the page, the **Analyzed files** section can reopen them instantly.
+
+The target branch is sent to the bridge as a hint and used as the diff base, for example `origin/dev`. If the field is empty, the bridge falls back to GitHub metadata via `gh pr view`, then the remote default branch.
 
 ## Bridge API
 
@@ -285,6 +289,8 @@ Implemented endpoints:
 - `POST /bind-repo`
 - `POST /prepare-pr-worktree`
 - `POST /analyse-pr`
+- `POST /analyse-pr-plan`
+- `POST /analyse-pr-heatmap`
 - `POST /analyse-pr-trace`
 - `POST /analyse-pr-worries`
 - `POST /analyse-file`
@@ -332,13 +338,13 @@ Example logs:
 
 Copilot and Claude receive stable provider session IDs for the same PR head.
 
-This reduces repeated provider-side rediscovery without requiring us to keep an interactive CLI process running forever.
+This can reduce repeated provider-side rediscovery without requiring us to keep an interactive CLI process running forever. The bridge computes the ID deterministically; the provider decides whether that ID creates a new session or resumes an existing one.
 
 Example logs:
 
 ```text
-[bridge:provider-session] reusing provider session <uuid> for copilot-cli org/repo#131 head=<sha>
-[bridge:provider] invoking copilot-cli in ... with session <uuid>
+[bridge:provider-session] using deterministic session id <uuid> for copilot-cli org/repo#131 base=origin/dev@<base-sha> head=<head-sha>
+[bridge:provider] invoking copilot-cli in ... with session id <uuid>
 ```
 
 ### 3. File Context Packs
@@ -383,21 +389,23 @@ Example log:
 [bridge:context] built PR context pack: changed=18 included=18 risky=8 sampledDiffs=3 sampledDiffChars=10900 in 120ms
 ```
 
-### 5. Lazy Guide Sections
+### 5. Progressive Guide Sections
 
-The initial `POST /analyse-pr` call now focuses on the sections a reviewer needs first:
+The initial `POST /analyse-pr` call now focuses on the first thing a reviewer needs:
 
 - PR Understanding
-- Review Plan
-- Risk Heatmap
-- Files
 
-Heavier guide sections are loaded on demand:
+As soon as that returns, the panel shows the PR purpose, affected systems, likely risks, and key behavior changes. Then the extension requests the next sections in the background:
+
+- `POST /analyse-pr-plan` for Review Plan
+- `POST /analyse-pr-heatmap` for Risk Heatmap and Files
+
+The deepest guide sections are still loaded on demand:
 
 - `POST /analyse-pr-trace` for Change Tracing
 - `POST /analyse-pr-worries` for Worries
 
-This avoids making the first overview request wait for every possible deep-dive section. The panel caches those lazy section results in the current page session, so switching away and back does not immediately re-run the provider.
+Change Tracing and Worries stay on demand because they are deeper reasoning passes. This split does not remove the total work if the user opens every section, but it improves time-to-first-useful-result and keeps a slow or timed-out section from blocking the whole review guide. The panel caches generated section results in the current page session, so switching away and back does not immediately re-run the provider.
 
 ## Logging
 
@@ -408,8 +416,11 @@ Useful examples:
 ```text
 [bridge] POST /analyse-file -> 200 26300ms
 [bridge:worktree] reusing worktree; PR head SHA unchanged (...)
-[bridge:provider-session] reusing provider session <uuid> ...
+[bridge:provider-session] using deterministic session id <uuid> ...
 [bridge:context] built PR context pack: changed=18 included=18 risky=8 sampledDiffs=3 sampledDiffChars=10900 in 120ms
+[bridge] POST /analyse-pr -> 200 18200ms
+[bridge] POST /analyse-pr-plan -> 200 21400ms
+[bridge] POST /analyse-pr-heatmap -> 200 24600ms
 [bridge:context] built file context pack for src/foo.ts ...
 ```
 

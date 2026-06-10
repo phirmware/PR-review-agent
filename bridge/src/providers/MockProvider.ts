@@ -4,6 +4,10 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrHeatmapProviderInput,
+  AnalysePrHeatmapResponse,
+  AnalysePrPlanProviderInput,
+  AnalysePrPlanResponse,
   AnalysePrTraceProviderInput,
   AnalysePrTraceResponse,
   AnalysePrWorriesProviderInput,
@@ -192,6 +196,45 @@ function buildReviewPlan(reviewOrder: AnalysePrResponse["reviewOrder"]): Analyse
   }));
 }
 
+function buildReviewOrder(changedFiles: Awaited<ReturnType<typeof getChangedFiles>>): AnalysePrResponse["reviewOrder"] {
+  return [...changedFiles]
+    .sort((left, right) => {
+      return (
+        riskScore[right.risk] - riskScore[left.risk] ||
+        right.additions +
+          right.deletions -
+          (left.additions + left.deletions)
+      );
+    })
+    .map((file) => ({
+      file: file.file,
+      risk: file.risk,
+      reason: file.reason,
+      suggestedAction:
+        file.risk === "high"
+          ? "Read the full diff and verify downstream impact before skimming supporting files."
+          : file.risk === "medium"
+            ? "Review the diff with nearby callers or tests open."
+            : "Skim the diff after the higher-risk files are understood."
+    }));
+}
+
+function buildHeatmap(changedFiles: Awaited<ReturnType<typeof getChangedFiles>>): AnalysePrHeatmapResponse {
+  return {
+    reviewOrder: buildReviewOrder(changedFiles),
+    skimFiles: changedFiles.filter((file) => isSkimFile(file.file)).map((file) => file.file),
+    suggestedChecks: buildSuggestedChecks(changedFiles.map((file) => file.file)),
+    changedFiles: changedFiles.map(({ file, additions, deletions, risk, reason, signals }) => ({
+      file,
+      additions,
+      deletions,
+      risk,
+      reason,
+      signals
+    }))
+  };
+}
+
 function buildImpactChains(changedFiles: Awaited<ReturnType<typeof getChangedFiles>>): AnalysePrResponse["impactChains"] {
   const runtimeFiles = changedFiles.filter((file) => !isSkimFile(file.file));
   const chainFiles = (runtimeFiles.length > 0 ? runtimeFiles : changedFiles)
@@ -279,28 +322,6 @@ export class MockProvider implements ReviewAgentProvider {
 
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const changedFiles = await getChangedFiles(input.baseRef, input.worktreePath);
-    const reviewOrder = [...changedFiles]
-      .sort((left, right) => {
-        return (
-          riskScore[right.risk] - riskScore[left.risk] ||
-          right.additions +
-            right.deletions -
-            (left.additions + left.deletions)
-        );
-      })
-      .map((file) => ({
-        file: file.file,
-        risk: file.risk,
-        reason: file.reason,
-        suggestedAction:
-          file.risk === "high"
-            ? "Read the full diff and verify downstream impact before skimming supporting files."
-            : file.risk === "medium"
-              ? "Review the diff with nearby callers or tests open."
-              : "Skim the diff after the higher-risk files are understood."
-      }));
-
-    const skimFiles = changedFiles.filter((file) => isSkimFile(file.file)).map((file) => file.file);
     const filesByRisk = changedFiles.reduce(
       (accumulator, file) => {
         accumulator[file.risk] += 1;
@@ -312,21 +333,26 @@ export class MockProvider implements ReviewAgentProvider {
     return {
       summary: `Mock provider reviewed ${changedFiles.length} changed file(s): ${filesByRisk.high} high-risk, ${filesByRisk.medium} medium-risk, and ${filesByRisk.low} low-risk. Use this as deterministic development guidance until a local coding-agent provider is enabled.`,
       prUnderstanding: buildPrUnderstanding(changedFiles),
-      reviewPlan: buildReviewPlan(reviewOrder),
-      reviewOrder,
-      skimFiles,
-      suggestedChecks: buildSuggestedChecks(changedFiles.map((file) => file.file)),
-      changedFiles: changedFiles.map(({ file, additions, deletions, risk, reason, signals }) => ({
-        file,
-        additions,
-        deletions,
-        risk,
-        reason,
-        signals
-      })),
+      reviewPlan: [],
+      reviewOrder: [],
+      skimFiles: [],
+      suggestedChecks: [],
+      changedFiles: [],
       impactChains: [],
       worries: []
     };
+  }
+
+  async analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse> {
+    const changedFiles = await getChangedFiles(input.baseRef, input.worktreePath);
+    return {
+      reviewPlan: buildReviewPlan(buildReviewOrder(changedFiles))
+    };
+  }
+
+  async analysePrHeatmap(input: AnalysePrHeatmapProviderInput): Promise<AnalysePrHeatmapResponse> {
+    const changedFiles = await getChangedFiles(input.baseRef, input.worktreePath);
+    return buildHeatmap(changedFiles);
   }
 
   async analysePrTrace(input: AnalysePrTraceProviderInput): Promise<AnalysePrTraceResponse> {
@@ -441,8 +467,8 @@ export class MockProvider implements ReviewAgentProvider {
   }
 
   async preApprovalCheck(input: PreApprovalProviderInput): Promise<PreApprovalCheckResponse> {
-    const analysis = await this.analysePr(input);
-    const remainingRisks = analysis.changedFiles
+    const heatmap = await this.analysePrHeatmap(input);
+    const remainingRisks = heatmap.changedFiles
       .filter((file) => !input.reviewedFiles.includes(file.file))
       .filter((file) => file.risk !== "low")
       .map(({ file, risk, reason }) => ({ file, risk, reason }));

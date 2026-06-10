@@ -47,13 +47,12 @@ describe("MockProvider", () => {
       headRef: "HEAD"
     });
 
-    expect(result.changedFiles.map((file) => file.file).sort()).toEqual(["package.json", "src/api.ts"]);
-    expect(result.reviewOrder[0].risk).toBe("high");
     expect(result.summary).toContain("Mock provider reviewed 2 changed file");
     expect(result.prUnderstanding.purpose).toContain("2 file");
     expect(result.prUnderstanding.affectedSystems.length).toBeGreaterThan(0);
-    expect(result.reviewPlan[0].files.length).toBeGreaterThan(0);
-    expect(result.changedFiles.some((file) => file.signals?.length)).toBe(true);
+    expect(result.reviewPlan).toEqual([]);
+    expect(result.reviewOrder).toEqual([]);
+    expect(result.changedFiles).toEqual([]);
     expect(result.impactChains).toEqual([]);
     expect(result.worries).toEqual([]);
   });
@@ -70,6 +69,15 @@ describe("MockProvider", () => {
       baseRef: "HEAD~1",
       headRef: "HEAD"
     } as const;
+
+    const plan = await provider.analysePrPlan(input);
+    expect(plan.reviewPlan[0].files.length).toBeGreaterThan(0);
+    expect(plan.reviewPlan[0].title).toContain("Review");
+
+    const heatmap = await provider.analysePrHeatmap(input);
+    expect(heatmap.changedFiles.map((file) => file.file).sort()).toEqual(["package.json", "src/api.ts"]);
+    expect(heatmap.reviewOrder[0].risk).toBe("high");
+    expect(heatmap.changedFiles.some((file) => file.signals?.length)).toBe(true);
 
     await expect(provider.analysePrTrace(input)).resolves.toMatchObject({
       impactChains: [

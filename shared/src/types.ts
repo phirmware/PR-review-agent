@@ -8,6 +8,7 @@ export interface PullRequestIdentity {
   owner: string;
   repo: string;
   prNumber: number;
+  baseBranchHint?: string;
 }
 
 export interface RepoBindingKey {
@@ -112,6 +113,21 @@ export interface AnalysePrResponse {
   changedFiles: ChangedFileSummary[];
   impactChains: ImpactChain[];
   worries: ReviewWorry[];
+}
+
+export interface AnalysePrPlanRequest extends PullRequestIdentity {}
+
+export interface AnalysePrPlanResponse {
+  reviewPlan: ReviewPlanStep[];
+}
+
+export interface AnalysePrHeatmapRequest extends PullRequestIdentity {}
+
+export interface AnalysePrHeatmapResponse {
+  reviewOrder: ReviewOrderItem[];
+  skimFiles: string[];
+  suggestedChecks: string[];
+  changedFiles: ChangedFileSummary[];
 }
 
 export interface AnalysePrTraceRequest extends PullRequestIdentity {}
@@ -274,6 +290,10 @@ export interface PrContextPack {
 export interface AnalysePrProviderInput extends ProviderExecutionInput {
   contextPack?: PrContextPack;
 }
+
+export interface AnalysePrPlanProviderInput extends AnalysePrProviderInput {}
+
+export interface AnalysePrHeatmapProviderInput extends AnalysePrProviderInput {}
 
 export interface AnalysePrTraceProviderInput extends AnalysePrProviderInput {}
 

@@ -26,6 +26,7 @@ function callbacks(overrides: Partial<ReviewPanelCallbacks> = {}): ReviewPanelCa
     onProviderChange: vi.fn(),
     onSelectGuideSection: vi.fn(),
     onLoadGuideSection: vi.fn(),
+    onBaseBranchHintInput: vi.fn(),
     ...overrides
   };
 }
@@ -170,5 +171,32 @@ describe("ReviewPanel", () => {
     expect(document.body.textContent).toContain("Change Tracing loads on demand");
     document.querySelector<HTMLButtonElement>("[data-rg-action='load-guide-section']")?.click();
     expect(onLoadGuideSection).toHaveBeenCalledWith("trace");
+  });
+
+  it("renders progressive section loading states", () => {
+    installDom();
+    const panel = new ReviewPanel(callbacks());
+
+    panel.render({
+      isOpen: true,
+      bridgeStatus: "connected",
+      analysis: makeAnalysis({ reviewPlan: [] }),
+      activeGuideSection: "plan",
+      loadedGuideSections: {
+        understanding: true
+      },
+      loadingGuideSections: {
+        plan: true
+      },
+      explainByFile: {},
+      testsByFile: {},
+      reviewedFiles: [],
+      analysedFiles: [],
+      activeFile: "src/cacheService.ts",
+      localRepoPathInput: ""
+    });
+
+    expect(document.body.textContent).toContain("Generating review plan");
+    expect(document.body.textContent).not.toContain("Review cache invalidation");
   });
 });

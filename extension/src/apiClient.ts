@@ -1,6 +1,8 @@
 import type {
   AnalyseFileRequest,
   AnalyseFileResponse,
+  AnalysePrHeatmapResponse,
+  AnalysePrPlanResponse,
   AnalysePrResponse,
   AnalysePrTraceResponse,
   AnalysePrWorriesResponse,
@@ -78,6 +80,20 @@ export class ApiClient {
 
   analysePr(identity: PullRequestIdentity): Promise<AnalysePrResponse> {
     return this.requestJson("/analyse-pr", {
+      method: "POST",
+      body: JSON.stringify(identity)
+    });
+  }
+
+  analysePrPlan(identity: PullRequestIdentity): Promise<AnalysePrPlanResponse> {
+    return this.requestJson("/analyse-pr-plan", {
+      method: "POST",
+      body: JSON.stringify(identity)
+    });
+  }
+
+  analysePrHeatmap(identity: PullRequestIdentity): Promise<AnalysePrHeatmapResponse> {
+    return this.requestJson("/analyse-pr-heatmap", {
       method: "POST",
       body: JSON.stringify(identity)
     });

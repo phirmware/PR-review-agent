@@ -17,6 +17,7 @@ import {
   applyRiskBadges,
   ensureFloatingButton,
   getCurrentGitHubFileInViewport,
+  getGitHubPrBaseBranch,
   getGitHubFileHeaderRect,
   getGitHubFileHeaders,
   hideFloatingButton,
@@ -37,6 +38,8 @@ let selectedTextForPopover = "";
 let fileAnalysisByFile: Record<string, AnalyseFileResponse> = {};
 let fileQuestionByFile: Record<string, AskFileQuestionResponse> = {};
 let questionDraftByFile: Record<string, string> = {};
+let baseBranchEdited = false;
+let analysisRunId = 0;
 
 const state: PanelState = {
   isOpen: false,
@@ -48,7 +51,9 @@ const state: PanelState = {
   activeFile: null,
   activeGuideSection: "understanding",
   loadedGuideSections: {},
-  localRepoPathInput: ""
+  loadingGuideSections: {},
+  localRepoPathInput: "",
+  baseBranchHintInput: ""
 };
 
 interface AnalyzeSelectedFileMessage {
@@ -78,14 +83,24 @@ function resolveSelectedFilePath(selectedText: string): string | null {
   return resolveSelectedFilePathFromKnownFiles(selectedText, getKnownFiles());
 }
 
-async function analyseFile(file: string): Promise<void> {
+function getRequestIdentity(): PullRequestIdentity | null {
   if (!state.pr) {
+    return null;
+  }
+
+  const baseBranchHint = state.baseBranchHintInput?.trim();
+  return baseBranchHint ? { ...state.pr, baseBranchHint } : state.pr;
+}
+
+async function analyseFile(file: string): Promise<void> {
+  const identity = getRequestIdentity();
+  if (!identity) {
     return;
   }
 
   update({ loadingAction: `analyse-file:${file}`, bridgeError: undefined });
   try {
-    const analysis = await client.analyseFile({ ...state.pr, file });
+    const analysis = await client.analyseFile({ ...identity, file });
     fileAnalysisByFile = {
       ...fileAnalysisByFile,
       [file]: analysis
@@ -99,14 +114,15 @@ async function analyseFile(file: string): Promise<void> {
 }
 
 async function askFileQuestion(file: string, question: string): Promise<void> {
-  if (!state.pr || !question.trim()) {
+  const identity = getRequestIdentity();
+  if (!identity || !question.trim()) {
     return;
   }
 
   update({ loadingAction: `ask:${file}`, bridgeError: undefined });
   try {
     const answer = await client.askFileQuestion({
-      ...state.pr,
+      ...identity,
       file,
       question: question.trim(),
       selectedText: selectedTextForPopover || undefined
@@ -128,13 +144,14 @@ async function askFileQuestion(file: string, question: string): Promise<void> {
 }
 
 async function explainFile(file: string): Promise<void> {
-  if (!state.pr) {
+  const identity = getRequestIdentity();
+  if (!identity) {
     return;
   }
 
   update({ loadingAction: `explain:${file}`, bridgeError: undefined });
   try {
-    const explanation: ExplainFileResponse = await client.explainFile({ ...state.pr, file });
+    const explanation: ExplainFileResponse = await client.explainFile({ ...identity, file });
     update({
       explainByFile: {
         ...state.explainByFile,
@@ -149,13 +166,14 @@ async function explainFile(file: string): Promise<void> {
 }
 
 async function suggestTests(file: string): Promise<void> {
-  if (!state.pr) {
+  const identity = getRequestIdentity();
+  if (!identity) {
     return;
   }
 
   update({ loadingAction: `tests:${file}`, bridgeError: undefined });
   try {
-    const tests: SuggestTestsResponse = await client.suggestTests({ ...state.pr, file });
+    const tests: SuggestTestsResponse = await client.suggestTests({ ...identity, file });
     update({
       testsByFile: {
         ...state.testsByFile,
@@ -170,43 +188,126 @@ async function suggestTests(file: string): Promise<void> {
 }
 
 async function loadGuideSection(section: GuideSectionId): Promise<void> {
-  if (!state.pr || !state.analysis || (section !== "trace" && section !== "worries")) {
+  const identity = getRequestIdentity();
+  await loadGuideSectionForIdentity(section, identity, analysisRunId);
+}
+
+function setGuideSectionLoading(section: GuideSectionId, isLoading: boolean): void {
+  update({
+    loadingGuideSections: {
+      ...(state.loadingGuideSections ?? {}),
+      [section]: isLoading
+    }
+  });
+}
+
+async function loadGuideSectionForIdentity(
+  section: GuideSectionId,
+  identity: PullRequestIdentity | null,
+  runId: number
+): Promise<void> {
+  if (!identity || !state.analysis) {
     return;
   }
 
-  if (state.loadedGuideSections?.[section] || state.loadingAction === `guide:${section}`) {
+  const loadingSection = section === "files" ? "heatmap" : section;
+  const alreadyLoaded =
+    section === "files"
+      ? Boolean(state.loadedGuideSections?.files || state.loadedGuideSections?.heatmap)
+      : Boolean(state.loadedGuideSections?.[section]);
+  if (alreadyLoaded || state.loadingGuideSections?.[loadingSection]) {
     return;
   }
 
-  update({ loadingAction: `guide:${section}`, bridgeError: undefined });
+  setGuideSectionLoading(loadingSection, true);
   try {
-    if (section === "trace") {
-      const sectionResult = await client.analysePrTrace(state.pr);
+    if (section === "plan") {
+      const sectionResult = await client.analysePrPlan(identity);
+      if (runId !== analysisRunId || !state.analysis) {
+        return;
+      }
+      currentAnalysis = {
+        ...state.analysis,
+        reviewPlan: sectionResult.reviewPlan
+      };
+      update({
+        analysis: currentAnalysis,
+        loadedGuideSections: {
+          ...(state.loadedGuideSections ?? {}),
+          plan: true
+        }
+      });
+    } else if (section === "heatmap" || section === "files") {
+      const sectionResult = await client.analysePrHeatmap(identity);
+      if (runId !== analysisRunId || !state.analysis) {
+        return;
+      }
+      currentAnalysis = {
+        ...state.analysis,
+        reviewOrder: sectionResult.reviewOrder,
+        skimFiles: sectionResult.skimFiles,
+        suggestedChecks: sectionResult.suggestedChecks,
+        changedFiles: sectionResult.changedFiles
+      };
+      update({
+        analysis: currentAnalysis,
+        activeFile: state.activeFile ?? sectionResult.reviewOrder[0]?.file ?? sectionResult.changedFiles[0]?.file ?? null,
+        loadedGuideSections: {
+          ...(state.loadedGuideSections ?? {}),
+          heatmap: true,
+          files: true
+        }
+      });
+      applyRiskBadges(currentAnalysis);
+    } else if (section === "trace") {
+      const sectionResult = await client.analysePrTrace(identity);
+      if (runId !== analysisRunId || !state.analysis) {
+        return;
+      }
       currentAnalysis = {
         ...state.analysis,
         impactChains: sectionResult.impactChains
       };
-    } else {
-      const sectionResult = await client.analysePrWorries(state.pr);
+      update({
+        analysis: currentAnalysis,
+        loadedGuideSections: {
+          ...(state.loadedGuideSections ?? {}),
+          trace: true
+        }
+      });
+    } else if (section === "worries") {
+      const sectionResult = await client.analysePrWorries(identity);
+      if (runId !== analysisRunId || !state.analysis) {
+        return;
+      }
       currentAnalysis = {
         ...state.analysis,
         worries: sectionResult.worries
       };
+      update({
+        analysis: currentAnalysis,
+        loadedGuideSections: {
+          ...(state.loadedGuideSections ?? {}),
+          worries: true
+        }
+      });
     }
-    update({
-      analysis: currentAnalysis,
-      loadedGuideSections: {
-        ...(state.loadedGuideSections ?? {}),
-        [section]: true
-      }
-    });
   } catch (error) {
-    update({
-      bridgeError: error instanceof Error ? error.message : `Failed to generate ${section === "trace" ? "change tracing" : "worries"}.`
-    });
+    if (runId === analysisRunId) {
+      update({
+        bridgeError: error instanceof Error ? error.message : `Failed to generate ${section}.`
+      });
+    }
   } finally {
-    update({ loadingAction: null });
+    if (runId === analysisRunId) {
+      setGuideSectionLoading(loadingSection, false);
+    }
   }
+}
+
+async function loadProgressiveGuideSections(identity: PullRequestIdentity, runId: number): Promise<void> {
+  await loadGuideSectionForIdentity("plan", identity, runId);
+  await loadGuideSectionForIdentity("heatmap", identity, runId);
 }
 
 async function toggleReviewed(file: string): Promise<void> {
@@ -273,28 +374,44 @@ const panel = new ReviewPanel({
     }
   },
   async onAnalysePr() {
-    if (!state.pr) {
+    const identity = getRequestIdentity();
+    if (!identity) {
       return;
     }
 
-    update({ loadingAction: "analyse", bridgeError: undefined });
+    const runId = ++analysisRunId;
+    update({ loadingAction: "analyse", bridgeError: undefined, loadingGuideSections: {}, loadedGuideSections: {} });
     try {
-      currentAnalysis = await client.analysePr(state.pr);
+      currentAnalysis = await client.analysePr(identity);
+      if (runId !== analysisRunId) {
+        return;
+      }
       update({
         analysis: currentAnalysis,
-        activeFile: currentAnalysis.reviewOrder[0]?.file ?? currentAnalysis.changedFiles[0]?.file ?? null,
+        activeFile: null,
         activeGuideSection: "understanding",
         loadedGuideSections: {
+          understanding: true,
+          plan: currentAnalysis.reviewPlan.length > 0,
+          heatmap: currentAnalysis.changedFiles.length > 0,
+          files: currentAnalysis.changedFiles.length > 0,
           trace: currentAnalysis.impactChains.length > 0,
           worries: currentAnalysis.worries.length > 0
         },
+        loadingGuideSections: {},
+        loadingAction: null,
         preApproval: null
       });
       applyRiskBadges(currentAnalysis);
+      void loadProgressiveGuideSections(identity, runId);
     } catch (error) {
-      update({ bridgeError: error instanceof Error ? error.message : "Failed to analyse PR." });
+      if (runId === analysisRunId) {
+        update({ bridgeError: error instanceof Error ? error.message : "Failed to analyse PR." });
+      }
     } finally {
-      update({ loadingAction: null });
+      if (runId === analysisRunId && state.loadingAction === "analyse") {
+        update({ loadingAction: null });
+      }
     }
   },
   async onExplainFile(file) {
@@ -307,14 +424,15 @@ const panel = new ReviewPanel({
     await toggleReviewed(file);
   },
   async onPreApprovalCheck() {
-    if (!state.pr) {
+    const identity = getRequestIdentity();
+    if (!identity) {
       return;
     }
 
     update({ loadingAction: "pre-approval", bridgeError: undefined });
     try {
       const preApproval: PreApprovalCheckResponse = await client.preApprovalCheck({
-        ...state.pr,
+        ...identity,
         reviewedFiles: state.reviewedFiles
       });
       update({ preApproval });
@@ -329,6 +447,13 @@ const panel = new ReviewPanel({
   },
   onLocalRepoPathInput(value) {
     state.localRepoPathInput = value;
+  },
+  onBaseBranchHintInput(value) {
+    baseBranchEdited = true;
+    update({
+      baseBranchHintInput: value,
+      pr: state.pr ? { ...state.pr, baseBranchHint: value.trim() || undefined } : state.pr
+    });
   },
   onSelectFile(file) {
     openFilePopover(file);
@@ -357,6 +482,7 @@ const panel = new ReviewPanel({
     try {
       const settings = await client.setProvider({ provider });
       currentAnalysis = null;
+      analysisRunId += 1;
       fileAnalysisByFile = {};
       fileQuestionByFile = {};
       questionDraftByFile = {};
@@ -374,7 +500,8 @@ const panel = new ReviewPanel({
         preApproval: null,
         activeFile: null,
         activeGuideSection: "understanding",
-        loadedGuideSections: {}
+        loadedGuideSections: {},
+        loadingGuideSections: {}
       });
     } catch (error) {
       update({ bridgeError: error instanceof Error ? error.message : "Failed to switch provider." });
@@ -424,14 +551,15 @@ const filePopover = new FilePopover({
 });
 
 async function panelCallbacksPreApproval(): Promise<void> {
-  if (!state.pr) {
+  const identity = getRequestIdentity();
+  if (!identity) {
     return;
   }
 
   update({ loadingAction: "pre-approval", bridgeError: undefined });
   try {
     const preApproval: PreApprovalCheckResponse = await client.preApprovalCheck({
-      ...state.pr,
+      ...identity,
       reviewedFiles: state.reviewedFiles
     });
     update({ preApproval });
@@ -597,6 +725,7 @@ async function syncPageState(): Promise<void> {
   if (!pr) {
     currentAnalysis = null;
     currentPrKey = "";
+    analysisRunId += 1;
     hideFloatingButton();
     update({
       pr: null,
@@ -607,8 +736,11 @@ async function syncPageState(): Promise<void> {
       activeFile: null,
       activeGuideSection: "understanding",
       loadedGuideSections: {},
+      loadingGuideSections: {},
+      baseBranchHintInput: "",
       preApproval: null
     });
+    baseBranchEdited = false;
     fileAnalysisByFile = {};
     fileQuestionByFile = {};
     questionDraftByFile = {};
@@ -624,13 +756,24 @@ async function syncPageState(): Promise<void> {
     render();
   });
 
+  const detectedBaseBranch = getGitHubPrBaseBranch();
   const prKey = `${pr.host}/${pr.owner}/${pr.repo}#${pr.prNumber}`;
-  update({ pr });
+  const isNewPr = prKey !== currentPrKey;
+  const baseBranchHintInput = isNewPr
+    ? detectedBaseBranch ?? ""
+    : baseBranchEdited
+      ? state.baseBranchHintInput ?? ""
+      : detectedBaseBranch ?? state.baseBranchHintInput ?? "";
+  const prWithBaseBranch = baseBranchHintInput.trim() ? { ...pr, baseBranchHint: baseBranchHintInput.trim() } : pr;
 
-  if (prKey !== currentPrKey) {
+  if (isNewPr) {
     currentPrKey = prKey;
     currentAnalysis = null;
+    analysisRunId += 1;
+    baseBranchEdited = false;
     update({
+      pr: prWithBaseBranch,
+      baseBranchHintInput,
       analysis: null,
       explainByFile: {},
       testsByFile: {},
@@ -638,6 +781,7 @@ async function syncPageState(): Promise<void> {
       activeFile: null,
       activeGuideSection: "understanding",
       loadedGuideSections: {},
+      loadingGuideSections: {},
       localRepoPathInput: "",
       reviewedFiles: []
     });
@@ -645,8 +789,11 @@ async function syncPageState(): Promise<void> {
     fileQuestionByFile = {};
     questionDraftByFile = {};
     await loadBridgeState(pr);
+    applyPageEnhancements();
+    return;
   }
 
+  update({ pr: prWithBaseBranch, baseBranchHintInput });
   applyPageEnhancements();
 }
 
