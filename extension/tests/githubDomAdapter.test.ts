@@ -17,6 +17,42 @@ function installDom(html: string): void {
   });
 }
 
+function makeAnalysis(overrides: Partial<AnalysePrResponse> = {}): AnalysePrResponse {
+  return {
+    summary: "Reviewed one file.",
+    prUnderstanding: {
+      purpose: "Exercise DOM adapter behavior.",
+      affectedSystems: ["API layer"],
+      potentialRisks: ["Review API contract implications."],
+      keyBehaviorChanges: ["src/api.ts changed."]
+    },
+    reviewPlan: [
+      {
+        title: "Review API",
+        reason: "API-facing change.",
+        files: ["src/api.ts"],
+        suggestedFocus: "Check callers and tests."
+      }
+    ],
+    reviewOrder: [],
+    skimFiles: [],
+    suggestedChecks: [],
+    changedFiles: [
+      {
+        file: "src/api.ts",
+        additions: 10,
+        deletions: 2,
+        risk: "medium",
+        reason: "API-facing change.",
+        signals: ["API contract"]
+      }
+    ],
+    impactChains: [],
+    worries: [],
+    ...overrides
+  };
+}
+
 describe("githubDomAdapter", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -29,21 +65,7 @@ describe("githubDomAdapter", () => {
       </div>
     `);
 
-    const analysis: AnalysePrResponse = {
-      summary: "Reviewed one file.",
-      reviewOrder: [],
-      skimFiles: [],
-      suggestedChecks: [],
-      changedFiles: [
-        {
-          file: "src/api.ts",
-          additions: 10,
-          deletions: 2,
-          risk: "medium",
-          reason: "API-facing change."
-        }
-      ]
-    };
+    const analysis = makeAnalysis();
 
     expect(getGitHubFileHeaders()).toHaveLength(1);
     applyRiskBadges(analysis);
@@ -88,21 +110,7 @@ describe("githubDomAdapter", () => {
     `);
 
     applyFileReviewControls(
-      {
-        summary: "Reviewed one file.",
-        reviewOrder: [],
-        skimFiles: [],
-        suggestedChecks: [],
-        changedFiles: [
-          {
-            file: "src/api.ts",
-            additions: 10,
-            deletions: 2,
-            risk: "medium",
-            reason: "API-facing change."
-          }
-        ]
-      },
+      makeAnalysis(),
       ["src/api.ts"],
       "src/api.ts"
     );

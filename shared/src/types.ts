@@ -63,6 +63,7 @@ export interface ChangedFileSummary {
   deletions: number;
   risk: RiskLevel;
   reason: string;
+  signals?: string[];
 }
 
 export interface ReviewOrderItem {
@@ -72,12 +73,45 @@ export interface ReviewOrderItem {
   suggestedAction: string;
 }
 
+export interface PrUnderstanding {
+  purpose: string;
+  affectedSystems: string[];
+  potentialRisks: string[];
+  keyBehaviorChanges: string[];
+}
+
+export interface ReviewPlanStep {
+  title: string;
+  reason: string;
+  files: string[];
+  suggestedFocus: string;
+}
+
+export interface ImpactChain {
+  title: string;
+  nodes: string[];
+  explanation: string;
+  risk: RiskLevel;
+}
+
+export interface ReviewWorry {
+  title: string;
+  reason: string;
+  files: string[];
+  suggestedCheck: string;
+  risk: RiskLevel;
+}
+
 export interface AnalysePrResponse {
   summary: string;
+  prUnderstanding: PrUnderstanding;
+  reviewPlan: ReviewPlanStep[];
   reviewOrder: ReviewOrderItem[];
   skimFiles: string[];
   suggestedChecks: string[];
   changedFiles: ChangedFileSummary[];
+  impactChains: ImpactChain[];
+  worries: ReviewWorry[];
 }
 
 export interface ExplainFileRequest extends PullRequestIdentity {

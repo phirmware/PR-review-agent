@@ -7,6 +7,9 @@
     "bridge",
     "extension"
   ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "build": "npm run build -w shared && npm run build -w bridge && npm run build -w extension",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w bridge && npm run typecheck -w extension",

@@ -24,7 +24,7 @@ import {
 } from "./githubDomAdapter.js";
 import { resolveSelectedFilePath as resolveSelectedFilePathFromKnownFiles } from "./filePathResolver.js";
 import { parseGitHubPrUrl } from "./githubPrParser.js";
-import { ReviewPanel, type PanelState } from "./reviewPanel.js";
+import { ReviewPanel, type GuideSectionId, type PanelState } from "./reviewPanel.js";
 import { getReviewedFiles, setReviewedFiles } from "./storage.js";
 
 const client = new ApiClient();
@@ -46,6 +46,7 @@ const state: PanelState = {
   reviewedFiles: [],
   analysedFiles: [],
   activeFile: null,
+  activeGuideSection: "understanding",
   localRepoPathInput: ""
 };
 
@@ -241,6 +242,7 @@ const panel = new ReviewPanel({
       update({
         analysis: currentAnalysis,
         activeFile: currentAnalysis.reviewOrder[0]?.file ?? currentAnalysis.changedFiles[0]?.file ?? null,
+        activeGuideSection: "understanding",
         preApproval: null
       });
       applyRiskBadges(currentAnalysis);
@@ -325,13 +327,17 @@ const panel = new ReviewPanel({
         explainByFile: {},
         testsByFile: {},
         preApproval: null,
-        activeFile: null
+        activeFile: null,
+        activeGuideSection: "understanding"
       });
     } catch (error) {
       update({ bridgeError: error instanceof Error ? error.message : "Failed to switch provider." });
     } finally {
       update({ loadingAction: null });
     }
+  },
+  onSelectGuideSection(section: GuideSectionId) {
+    update({ activeGuideSection: section });
   }
 });
 
@@ -549,6 +555,7 @@ async function syncPageState(): Promise<void> {
       explainByFile: {},
       testsByFile: {},
       activeFile: null,
+      activeGuideSection: "understanding",
       preApproval: null
     });
     fileAnalysisByFile = {};
@@ -578,6 +585,7 @@ async function syncPageState(): Promise<void> {
       testsByFile: {},
       preApproval: null,
       activeFile: null,
+      activeGuideSection: "understanding",
       localRepoPathInput: "",
       reviewedFiles: []
     });

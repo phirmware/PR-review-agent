@@ -50,6 +50,12 @@ describe("MockProvider", () => {
     expect(result.changedFiles.map((file) => file.file).sort()).toEqual(["package.json", "src/api.ts"]);
     expect(result.reviewOrder[0].risk).toBe("high");
     expect(result.summary).toContain("Mock provider reviewed 2 changed file");
+    expect(result.prUnderstanding.purpose).toContain("2 file");
+    expect(result.prUnderstanding.affectedSystems.length).toBeGreaterThan(0);
+    expect(result.reviewPlan[0].files.length).toBeGreaterThan(0);
+    expect(result.changedFiles.some((file) => file.signals?.length)).toBe(true);
+    expect(result.impactChains[0].nodes.length).toBeGreaterThan(0);
+    expect(result.worries[0].suggestedCheck).toContain("Check");
   });
 
   it("supports explain-file and pre-approval checks", async () => {

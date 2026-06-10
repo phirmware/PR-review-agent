@@ -16,17 +16,66 @@ describe("schemas", () => {
     expect(
       analysePrResponseSchema.parse({
         summary: "Reviewed.",
+        prUnderstanding: {
+          purpose: "Adds guided review output.",
+          affectedSystems: ["API layer"],
+          potentialRisks: ["API contract drift"],
+          keyBehaviorChanges: ["src/api.ts changed."]
+        },
+        reviewPlan: [
+          {
+            title: "Review API",
+            reason: "API-facing behavior changed.",
+            files: ["src/api.ts"],
+            suggestedFocus: "Check callers and tests."
+          }
+        ],
         reviewOrder: [],
         skimFiles: [],
         suggestedChecks: [],
-        changedFiles: []
+        changedFiles: [
+          {
+            file: "src/api.ts",
+            additions: 3,
+            deletions: 1,
+            risk: "medium",
+            reason: "API-facing behavior changed.",
+            signals: ["API contract"]
+          }
+        ],
+        impactChains: [
+          {
+            title: "API impact",
+            nodes: ["src/api.ts", "src/api.test.ts"],
+            explanation: "The API change should be reflected in tests.",
+            risk: "medium"
+          }
+        ],
+        worries: [
+          {
+            title: "Missing regression coverage",
+            reason: "The behavior should be covered by a focused test.",
+            files: ["src/api.ts"],
+            suggestedCheck: "Run API tests.",
+            risk: "medium"
+          }
+        ]
       })
-    ).toEqual({
+    ).toMatchObject({
       summary: "Reviewed.",
-      reviewOrder: [],
-      skimFiles: [],
-      suggestedChecks: [],
-      changedFiles: []
+      prUnderstanding: {
+        purpose: "Adds guided review output."
+      },
+      reviewPlan: [
+        {
+          title: "Review API"
+        }
+      ],
+      changedFiles: [
+        {
+          signals: ["API contract"]
+        }
+      ]
     });
   });
 

@@ -48,11 +48,26 @@ export const changedFileSchema = z.object({
   additions: z.number().int().nonnegative(),
   deletions: z.number().int().nonnegative(),
   risk: riskLevelSchema,
-  reason: z.string().min(1)
+  reason: z.string().min(1),
+  signals: z.array(z.string().min(1)).optional()
 });
 
 export const analysePrResponseSchema = z.object({
   summary: z.string().min(1),
+  prUnderstanding: z.object({
+    purpose: z.string().min(1),
+    affectedSystems: z.array(z.string().min(1)),
+    potentialRisks: z.array(z.string().min(1)),
+    keyBehaviorChanges: z.array(z.string().min(1))
+  }),
+  reviewPlan: z.array(
+    z.object({
+      title: z.string().min(1),
+      reason: z.string().min(1),
+      files: z.array(z.string().min(1)),
+      suggestedFocus: z.string().min(1)
+    })
+  ),
   reviewOrder: z.array(
     z.object({
       file: z.string().min(1),
@@ -63,7 +78,24 @@ export const analysePrResponseSchema = z.object({
   ),
   skimFiles: z.array(z.string().min(1)),
   suggestedChecks: z.array(z.string().min(1)),
-  changedFiles: z.array(changedFileSchema)
+  changedFiles: z.array(changedFileSchema),
+  impactChains: z.array(
+    z.object({
+      title: z.string().min(1),
+      nodes: z.array(z.string().min(1)),
+      explanation: z.string().min(1),
+      risk: riskLevelSchema
+    })
+  ),
+  worries: z.array(
+    z.object({
+      title: z.string().min(1),
+      reason: z.string().min(1),
+      files: z.array(z.string().min(1)),
+      suggestedCheck: z.string().min(1),
+      risk: riskLevelSchema
+    })
+  )
 });
 
 export const explainFileResponseSchema = z.object({

@@ -43,7 +43,7 @@ shared/     Shared TypeScript contracts
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js `20.19+` or `22.12+`
 - npm
 - git
 - Chrome or another Chromium browser that supports unpacked Manifest V3 extensions
@@ -63,6 +63,8 @@ Clone and install:
 ```sh
 git clone <this-repo-url>
 cd PR-review-agent
+nvm install
+nvm use
 npm install
 ```
 
