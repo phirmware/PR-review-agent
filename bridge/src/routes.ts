@@ -2,6 +2,7 @@ import path from "node:path";
 import express from "express";
 import type { z } from "zod";
 import type {
+  AnalysePrStreamEvent,
   BindRepoResponse,
   CleanupWorktreesResponse,
   HealthResponse,
@@ -91,6 +92,19 @@ function validateProviderResult<T>(schema: z.ZodType<T>, value: unknown): T {
   }
 
   return parsed.data;
+}
+
+function startStreamResponse(response: express.Response): void {
+  response.status(200);
+  response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.setHeader("Connection", "keep-alive");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.flushHeaders?.();
+}
+
+function writeStreamEvent(response: express.Response, event: AnalysePrStreamEvent): void {
+  response.write(`${JSON.stringify(event)}\n`);
 }
 
 function sanitizeFilePath(worktreePath: string, file: string): string {
@@ -248,6 +262,84 @@ export function createApp() {
       response.json(validateProviderResult(analysePrResponseSchema, result));
     } catch (error) {
       sendError(response, error);
+    }
+  });
+
+  app.post("/analyse-pr-stream", async (request, response) => {
+    let streamStarted = false;
+    const startedAt = Date.now();
+    const elapsedMs = () => Date.now() - startedAt;
+
+    try {
+      const identity = pullRequestIdentitySchema.parse(request.body);
+      const provider = await providerManager.getSelectedProvider();
+
+      startStreamResponse(response);
+      streamStarted = true;
+      writeStreamEvent(response, {
+        type: "status",
+        stage: "prepare",
+        message: "Preparing PR worktree.",
+        elapsedMs: elapsedMs()
+      });
+
+      const prepared = await resolvePreparedContext(identity);
+      writeStreamEvent(response, {
+        type: "status",
+        stage: "context",
+        message: "Building PR context pack.",
+        elapsedMs: elapsedMs()
+      });
+
+      const contextPack = await buildPrContextPack({
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef
+      });
+
+      const providerInput = {
+        ...identity,
+        contextPack,
+        worktreePath: prepared.worktreePath,
+        baseRef: prepared.baseRef,
+        headRef: prepared.headRef
+      };
+
+      writeStreamEvent(response, {
+        type: "status",
+        stage: "provider",
+        message: `Streaming ${provider.name} PR understanding.`,
+        elapsedMs: elapsedMs()
+      });
+
+      const result = provider.analysePrStream
+        ? await provider.analysePrStream(providerInput, (event) => writeStreamEvent(response, event))
+        : await provider.analysePr(providerInput);
+      const validated = validateProviderResult(analysePrResponseSchema, result);
+
+      writeStreamEvent(response, {
+        type: "status",
+        stage: "final",
+        message: "Validated PR understanding.",
+        elapsedMs: elapsedMs()
+      });
+      writeStreamEvent(response, {
+        type: "final",
+        result: validated
+      });
+    } catch (error) {
+      if (!streamStarted) {
+        sendError(response, error);
+        return;
+      }
+
+      writeStreamEvent(response, {
+        type: "error",
+        error: toErrorMessage(error)
+      });
+    } finally {
+      if (streamStarted) {
+        response.end();
+      }
     }
   });
 

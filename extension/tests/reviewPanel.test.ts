@@ -199,4 +199,36 @@ describe("ReviewPanel", () => {
     expect(document.body.textContent).toContain("Generating review plan");
     expect(document.body.textContent).not.toContain("Review cache invalidation");
   });
+
+  it("renders streamed PR understanding before final analysis exists", () => {
+    installDom();
+    const panel = new ReviewPanel(callbacks());
+
+    panel.render({
+      isOpen: true,
+      bridgeStatus: "connected",
+      binding: {
+        found: true,
+        localPath: "/tmp/rewards-service"
+      },
+      loadingAction: "analyse",
+      streamingUnderstanding: {
+        status: "Streaming Claude Code PR understanding.",
+        summary: "This PR changes balance caching behavior.",
+        purpose: "Adds loyalty balance caching to reduce API calls.",
+        potentialRisks: ["Stale balances"]
+      },
+      explainByFile: {},
+      testsByFile: {},
+      reviewedFiles: [],
+      analysedFiles: [],
+      activeFile: null,
+      localRepoPathInput: ""
+    });
+
+    expect(document.body.textContent).toContain("Streaming Claude Code PR understanding.");
+    expect(document.body.textContent).toContain("Adds loyalty balance caching");
+    expect(document.body.textContent).toContain("Stale balances");
+    expect(document.body.textContent).toContain("Waiting for final validated result");
+  });
 });

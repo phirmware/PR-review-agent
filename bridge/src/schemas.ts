@@ -107,6 +107,27 @@ export const analysePrResponseSchema = z.object({
   )
 });
 
+const analysePrTextPartialStreamEventSchema = z.object({
+  type: z.literal("partial"),
+  field: z.enum(["summary", "purpose"]),
+  text: z.string().min(1)
+});
+
+const analysePrListPartialStreamEventSchema = z.object({
+  type: z.literal("partial"),
+  field: z.enum(["affectedSystems", "potentialRisks", "keyBehaviorChanges"]),
+  items: z.array(z.string().min(1))
+});
+
+export const analysePrProviderStreamEventSchema = z.union([
+  analysePrTextPartialStreamEventSchema,
+  analysePrListPartialStreamEventSchema,
+  z.object({
+    type: z.literal("final"),
+    result: analysePrResponseSchema
+  })
+]);
+
 export const analysePrPlanResponseSchema = z.object({
   reviewPlan: z.array(reviewPlanStepSchema)
 });

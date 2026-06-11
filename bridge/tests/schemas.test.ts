@@ -3,6 +3,7 @@ import {
   analyseFileResponseSchema,
   analysePrHeatmapResponseSchema,
   analysePrPlanResponseSchema,
+  analysePrProviderStreamEventSchema,
   analysePrResponseSchema,
   analysePrTraceResponseSchema,
   analysePrWorriesResponseSchema,
@@ -172,6 +173,56 @@ describe("schemas", () => {
           title: "Missing regression coverage"
         }
       ]
+    });
+  });
+
+  it("validates streamed PR understanding events", () => {
+    expect(
+      analysePrProviderStreamEventSchema.parse({
+        type: "partial",
+        field: "purpose",
+        text: "Adds guided review streaming."
+      })
+    ).toMatchObject({
+      field: "purpose"
+    });
+
+    expect(
+      analysePrProviderStreamEventSchema.parse({
+        type: "partial",
+        field: "potentialRisks",
+        items: ["Streaming output could be malformed."]
+      })
+    ).toMatchObject({
+      items: ["Streaming output could be malformed."]
+    });
+
+    expect(
+      analysePrProviderStreamEventSchema.parse({
+        type: "final",
+        result: {
+          summary: "Reviewed.",
+          prUnderstanding: {
+            purpose: "Adds guided review streaming.",
+            affectedSystems: ["Bridge"],
+            potentialRisks: ["Malformed stream events"],
+            keyBehaviorChanges: ["Understanding can render before final JSON."]
+          },
+          reviewPlan: [],
+          reviewOrder: [],
+          skimFiles: [],
+          suggestedChecks: [],
+          changedFiles: [],
+          impactChains: [],
+          worries: []
+        }
+      })
+    ).toMatchObject({
+      result: {
+        prUnderstanding: {
+          purpose: "Adds guided review streaming."
+        }
+      }
     });
   });
 

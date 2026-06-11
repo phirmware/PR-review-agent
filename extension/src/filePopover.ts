@@ -83,6 +83,8 @@ function getProviderLabel(provider: ProviderName): string {
 
 export class FilePopover {
   private readonly element = ensurePopoverElement();
+  private dragState: { pointerId: number; offsetX: number; offsetY: number } | null = null;
+  private manualPosition: { file: string; left: number; top: number } | null = null;
 
   constructor(private readonly callbacks: FilePopoverCallbacks) {
     this.element.addEventListener("click", (event) => {
@@ -139,12 +141,69 @@ export class FilePopover {
         this.callbacks.onQuestionDraftChange(file, input.value);
       }
     });
+
+    this.element.addEventListener("pointerdown", (event) => {
+      const target = event.target as HTMLElement | null;
+      const dragHandle = target?.closest<HTMLElement>("[data-rg-popover-drag-handle]");
+      if (!dragHandle || target?.closest("button, input, select, textarea, a")) {
+        return;
+      }
+
+      const rect = this.element.getBoundingClientRect();
+      this.dragState = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+      this.element.classList.add("rg-review-guide__popover--dragging");
+      this.element.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    this.element.addEventListener("pointermove", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      const rect = this.element.getBoundingClientRect();
+      const maxLeft = Math.max(window.innerWidth - rect.width - 12, 12);
+      const maxTop = Math.max(window.innerHeight - 80, 12);
+      const left = Math.min(Math.max(event.clientX - this.dragState.offsetX, 12), maxLeft);
+      const top = Math.min(Math.max(event.clientY - this.dragState.offsetY, 12), maxTop);
+      this.manualPosition = {
+        file: this.element.dataset.rgFile ?? "",
+        left,
+        top
+      };
+      this.element.style.left = `${left}px`;
+      this.element.style.top = `${top}px`;
+    });
+
+    this.element.addEventListener("pointerup", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      this.element.releasePointerCapture(event.pointerId);
+      this.element.classList.remove("rg-review-guide__popover--dragging");
+      this.dragState = null;
+    });
+
+    this.element.addEventListener("pointercancel", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      this.element.classList.remove("rg-review-guide__popover--dragging");
+      this.dragState = null;
+    });
   }
 
   render(state: FilePopoverState): void {
     if (!state.isOpen || !state.file) {
       this.element.classList.remove("rg-review-guide__popover--open");
       this.element.innerHTML = "";
+      this.manualPosition = null;
       return;
     }
 
@@ -168,14 +227,16 @@ export class FilePopover {
     const top = state.expanded
       ? 72
       : Math.min(Math.max(anchor ? anchor.bottom + 8 : 92, 72), Math.max(window.innerHeight - 520, 72));
-    this.element.style.left = `${left}px`;
-    this.element.style.top = `${top}px`;
+    const manualPosition = this.manualPosition?.file === file ? this.manualPosition : null;
+    this.element.style.left = `${manualPosition?.left ?? left}px`;
+    this.element.style.top = `${manualPosition?.top ?? top}px`;
     this.element.style.width = `${width}px`;
+    this.element.dataset.rgFile = file;
     this.element.classList.toggle("rg-review-guide__popover--expanded", state.expanded);
 
     this.element.classList.add("rg-review-guide__popover--open");
     this.element.innerHTML = `
-      <div class="rg-review-guide__popover-header">
+      <div class="rg-review-guide__popover-header" data-rg-popover-drag-handle="true" title="Drag to move file analysis">
         <div>
           <div class="rg-review-guide__popover-title">${escapeHtml(file)}</div>
           <div class="rg-review-guide__muted">

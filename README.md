@@ -289,6 +289,7 @@ Implemented endpoints:
 - `POST /bind-repo`
 - `POST /prepare-pr-worktree`
 - `POST /analyse-pr`
+- `POST /analyse-pr-stream`
 - `POST /analyse-pr-plan`
 - `POST /analyse-pr-heatmap`
 - `POST /analyse-pr-trace`
@@ -407,6 +408,21 @@ The deepest guide sections are still loaded on demand:
 
 Change Tracing and Worries stay on demand because they are deeper reasoning passes. This split does not remove the total work if the user opens every section, but it improves time-to-first-useful-result and keeps a slow or timed-out section from blocking the whole review guide. The panel caches generated section results in the current page session, so switching away and back does not immediately re-run the provider.
 
+### 6. Streaming PR Understanding
+
+The extension first tries `POST /analyse-pr-stream` for the PR Understanding section. This endpoint is additive: the original `POST /analyse-pr` endpoint still exists and is used as a fallback if streaming fails.
+
+The streaming endpoint returns newline-delimited JSON events:
+
+```json
+{"type":"status","stage":"provider","message":"Streaming claude-code PR understanding."}
+{"type":"partial","field":"purpose","text":"Adds loyalty balance caching to reduce API calls."}
+{"type":"partial","field":"potentialRisks","items":["Stale balances"]}
+{"type":"final","result":{"summary":"...","prUnderstanding":{"purpose":"...","affectedSystems":[],"potentialRisks":[],"keyBehaviorChanges":[]},"reviewPlan":[],"reviewOrder":[],"skimFiles":[],"suggestedChecks":[],"changedFiles":[],"impactChains":[],"worries":[]}}
+```
+
+Claude uses `--output-format stream-json --include-partial-messages`. Copilot uses `--output-format json --stream on`. The bridge validates streamed provider events before rendering them and still requires a final validated `AnalysePrResponse`.
+
 ## Logging
 
 The bridge logs request timing and optimization decisions.
@@ -418,6 +434,7 @@ Useful examples:
 [bridge:worktree] reusing worktree; PR head SHA unchanged (...)
 [bridge:provider-session] using deterministic session id <uuid> ...
 [bridge:context] built PR context pack: changed=18 included=18 risky=8 sampledDiffs=3 sampledDiffChars=10900 in 120ms
+[bridge] POST /analyse-pr-stream -> 200 16500ms
 [bridge] POST /analyse-pr -> 200 18200ms
 [bridge] POST /analyse-pr-plan -> 200 21400ms
 [bridge] POST /analyse-pr-heatmap -> 200 24600ms

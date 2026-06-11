@@ -4,6 +4,7 @@ import type {
   AnalysePrHeatmapResponse,
   AnalysePrPlanResponse,
   AnalysePrResponse,
+  AnalysePrStreamEvent,
   AnalysePrTraceResponse,
   AnalysePrWorriesResponse,
   AskFileQuestionRequest,
@@ -83,6 +84,81 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(identity)
     });
+  }
+
+  async analysePrStream(
+    identity: PullRequestIdentity,
+    onEvent: (event: AnalysePrStreamEvent) => void
+  ): Promise<AnalysePrResponse> {
+    let response: Response;
+
+    try {
+      response = await fetch(`${this.baseUrl}/analyse-pr-stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(identity)
+      });
+    } catch {
+      throw new Error("Bridge unreachable. Start the local review-guide bridge on localhost.");
+    }
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error ?? `Bridge stream request failed with status ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error("Bridge stream response was not readable.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResult: AnalysePrResponse | null = null;
+
+    const parseLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      const event = JSON.parse(trimmed) as AnalysePrStreamEvent;
+      onEvent(event);
+      if (event.type === "error") {
+        throw new Error(event.error);
+      }
+      if (event.type === "final") {
+        finalResult = event.result;
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      while (buffer.includes("\n")) {
+        const newlineIndex = buffer.indexOf("\n");
+        const line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+        parseLine(line);
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      parseLine(buffer);
+    }
+
+    if (!finalResult) {
+      throw new Error("Bridge stream ended before returning a final analysis.");
+    }
+
+    return finalResult;
   }
 
   analysePrPlan(identity: PullRequestIdentity): Promise<AnalysePrPlanResponse> {

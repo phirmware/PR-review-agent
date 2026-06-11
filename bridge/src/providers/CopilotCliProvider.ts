@@ -3,6 +3,7 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrStreamEmit,
   AnalysePrHeatmapProviderInput,
   AnalysePrHeatmapResponse,
   AnalysePrPlanProviderInput,
@@ -23,11 +24,12 @@ import type {
 } from "@review-guide/shared";
 import type { z } from "zod";
 import { AppError } from "../errors.js";
-import { runCommand } from "../git.js";
+import { runCommand, runStreamingCommand } from "../git.js";
 import { buildAnalyseFilePrompt } from "../prompts/analyseFilePrompt.js";
 import { buildAnalysePrHeatmapPrompt } from "../prompts/analysePrHeatmapPrompt.js";
 import { buildAnalysePrPlanPrompt } from "../prompts/analysePrPlanPrompt.js";
 import { buildAnalysePrPrompt } from "../prompts/analysePrPrompt.js";
+import { buildAnalysePrStreamPrompt } from "../prompts/analysePrStreamPrompt.js";
 import { buildAnalysePrTracePrompt } from "../prompts/analysePrTracePrompt.js";
 import { buildAnalysePrWorriesPrompt } from "../prompts/analysePrWorriesPrompt.js";
 import { buildAskFileQuestionPrompt } from "../prompts/askFileQuestionPrompt.js";
@@ -48,6 +50,7 @@ import {
   suggestTestsResponseSchema
 } from "../schemas.js";
 import { getProviderSessionId } from "./providerSession.js";
+import { AnalysePrStreamParser } from "./analysePrStreamParser.js";
 import type { ReviewAgentProvider } from "./ReviewAgentProvider.js";
 
 function getCopilotCommandArgs(prompt: string, sessionId: string | null): string[] {
@@ -62,6 +65,31 @@ function getCopilotCommandArgs(prompt: string, sessionId: string | null): string
   return [
     "--silent",
     "--no-color",
+    ...(sessionId ? ["--session-id", sessionId] : []),
+    "-p",
+    prompt,
+    "--allow-tool",
+    "shell(git)",
+    "--allow-tool",
+    "shell(rg)"
+  ];
+}
+
+function getCopilotStreamCommandArgs(prompt: string, sessionId: string | null): string[] {
+  const configuredArgs = process.env.REVIEW_GUIDE_COPILOT_STREAM_ARGS?.trim();
+  if (configuredArgs) {
+    const args = configuredArgs.split(/\s+/);
+    return args.some((arg) => arg.includes("{prompt}"))
+      ? args.map((arg) => arg.replaceAll("{prompt}", prompt))
+      : [...args, prompt];
+  }
+
+  return [
+    "--no-color",
+    "--output-format",
+    "json",
+    "--stream",
+    "on",
     ...(sessionId ? ["--session-id", sessionId] : []),
     "-p",
     prompt,
@@ -108,6 +136,68 @@ async function runCopilot(prompt: string, input: ProviderExecutionInput): Promis
   }
 }
 
+async function runCopilotStream(
+  prompt: string,
+  input: ProviderExecutionInput,
+  onTextDelta: (text: string) => void
+): Promise<string> {
+  // This provider can send repository context to GitHub Copilot depending on the user's local Copilot CLI setup.
+  const command = process.env.REVIEW_GUIDE_COPILOT_COMMAND ?? "copilot";
+  const sessionId = await getProviderSessionId("copilot-cli", input);
+  let stdoutBuffer = "";
+  console.log(
+    `[bridge:provider] streaming copilot-cli in ${input.worktreePath}${sessionId ? ` with session id ${sessionId}` : " without session id"}`
+  );
+
+  try {
+    const result = await runStreamingCommand(command, getCopilotStreamCommandArgs(prompt, sessionId), {
+      cwd: input.worktreePath,
+      timeoutMs: 180_000,
+      onStdoutChunk(chunk) {
+        stdoutBuffer += stripAnsi(chunk);
+        while (stdoutBuffer.includes("\n")) {
+          const newlineIndex = stdoutBuffer.indexOf("\n");
+          const line = stdoutBuffer.slice(0, newlineIndex).trim();
+          stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+          if (!line) {
+            continue;
+          }
+
+          try {
+            const event = JSON.parse(line) as {
+              type?: string;
+              data?: {
+                deltaContent?: string;
+              };
+            };
+            if (event.type === "assistant.message_delta" && event.data?.deltaContent) {
+              onTextDelta(event.data.deltaContent);
+            }
+          } catch {
+            // Ignore non-JSON diagnostic lines from the CLI stream.
+          }
+        }
+      }
+    });
+
+    if (!result.stdout) {
+      throw new AppError("Copilot CLI did not return any streamed output.", 500);
+    }
+
+    return stripAnsi(result.stdout);
+  } catch (error) {
+    if (error instanceof AppError && /Copilot CLI not installed|Required command is unavailable: copilot/i.test(error.message)) {
+      throw new AppError(
+        "Copilot CLI is unavailable. Install the `copilot` command or set REVIEW_GUIDE_COPILOT_COMMAND to its absolute path.",
+        500,
+        error.details
+      );
+    }
+
+    throw error;
+  }
+}
+
 function parseCopilotJson<T>(raw: string, schema: z.ZodType<T>, task: string): T {
   try {
     return schema.parse(JSON.parse(extractJsonPayload(stripAnsi(raw))));
@@ -124,6 +214,12 @@ export class CopilotCliProvider implements ReviewAgentProvider {
   async analysePr(input: AnalysePrProviderInput): Promise<AnalysePrResponse> {
     const raw = await runCopilot(buildAnalysePrPrompt(input), input);
     return parseCopilotJson(raw, analysePrResponseSchema, "analyse-pr");
+  }
+
+  async analysePrStream(input: AnalysePrProviderInput, emit: AnalysePrStreamEmit): Promise<AnalysePrResponse> {
+    const parser = new AnalysePrStreamParser(emit);
+    await runCopilotStream(buildAnalysePrStreamPrompt(input), input, (text) => parser.pushText(text));
+    return parser.finish("analyse-pr-stream");
   }
 
   async analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse> {

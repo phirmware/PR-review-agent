@@ -20,6 +20,15 @@ const GUIDE_SECTIONS = [
 
 export type GuideSectionId = (typeof GUIDE_SECTIONS)[number]["id"];
 
+export interface StreamingUnderstandingState {
+  status?: string;
+  summary?: string;
+  purpose?: string;
+  affectedSystems?: string[];
+  potentialRisks?: string[];
+  keyBehaviorChanges?: string[];
+}
+
 export interface PanelState {
   isOpen: boolean;
   bridgeStatus: "idle" | "connected" | "error" | "loading";
@@ -37,6 +46,7 @@ export interface PanelState {
   loadingGuideSections?: Partial<Record<GuideSectionId, boolean>>;
   availableProviders?: ProviderName[];
   analysis?: AnalysePrResponse | null;
+  streamingUnderstanding?: StreamingUnderstandingState | null;
   activeFile?: string | null;
   explainByFile: Record<string, ExplainFileResponse>;
   testsByFile: Record<string, SuggestTestsResponse>;
@@ -452,6 +462,14 @@ function renderGuideContent(state: PanelState, reviewFiles: ReturnType<typeof ge
 function renderAnalysisSection(state: PanelState): string {
   const providerLabel = getProviderLabel(state.health?.provider ?? "mock");
   if (!state.analysis) {
+    const stream = state.streamingUnderstanding;
+    const hasStreamContent = Boolean(
+      stream?.summary ||
+        stream?.purpose ||
+        stream?.affectedSystems?.length ||
+        stream?.potentialRisks?.length ||
+        stream?.keyBehaviorChanges?.length
+    );
     return state.binding?.found
       ? `<div class="rg-review-guide__section">
           <button class="rg-review-guide__primary" data-rg-action="analyse" ${
@@ -459,10 +477,43 @@ function renderAnalysisSection(state: PanelState): string {
           }>${state.loadingAction === "analyse" ? "Analyzing PR..." : "Analyse PR"}</button>
           ${
             state.loadingAction === "analyse"
-              ? `<div class="rg-review-guide__loading">
-                  <span class="rg-review-guide__spinner" aria-hidden="true"></span>
-                  <span>${escapeHtml(providerLabel)} is preparing the guided PR review.</span>
-                </div>`
+              ? hasStreamContent
+                ? `<div class="rg-review-guide__stream-preview">
+                    ${renderSectionHeading("PR Understanding", stream?.status ?? `${providerLabel} is generating PR understanding.`)}
+                    ${
+                      stream?.summary
+                        ? `<p class="rg-review-guide__body-text">${escapeHtml(stream.summary)}</p>`
+                        : ""
+                    }
+                    ${
+                      stream?.purpose
+                        ? `<div class="rg-review-guide__insight">
+                            <strong>Purpose</strong>
+                            <p class="rg-review-guide__lead-text">${escapeHtml(stream.purpose)}</p>
+                          </div>`
+                        : ""
+                    }
+                    <div class="rg-review-guide__subsection">
+                      <strong>Affected systems</strong>
+                      ${renderList(stream?.affectedSystems ?? [], "Waiting for provider signal.")}
+                    </div>
+                    <div class="rg-review-guide__subsection">
+                      <strong>Potential risks</strong>
+                      ${renderList(stream?.potentialRisks ?? [], "Waiting for provider signal.")}
+                    </div>
+                    <div class="rg-review-guide__subsection">
+                      <strong>Key behavior changes</strong>
+                      ${renderList(stream?.keyBehaviorChanges ?? [], "Waiting for provider signal.")}
+                    </div>
+                    <div class="rg-review-guide__loading rg-review-guide__loading--inline">
+                      <span class="rg-review-guide__spinner" aria-hidden="true"></span>
+                      <span>Waiting for final validated result...</span>
+                    </div>
+                  </div>`
+                : `<div class="rg-review-guide__loading">
+                    <span class="rg-review-guide__spinner" aria-hidden="true"></span>
+                    <span>${escapeHtml(stream?.status ?? `${providerLabel} is preparing the guided PR review.`)}</span>
+                  </div>`
               : ""
           }
         </div>`
@@ -555,6 +606,7 @@ function renderAnalysedFilesSection(state: PanelState): string {
 
 export class ReviewPanel {
   private readonly element = ensurePanelElement();
+  private dragState: { pointerId: number; offsetX: number; offsetY: number } | null = null;
 
   constructor(private readonly callbacks: ReviewPanelCallbacks) {
     this.element.addEventListener("click", (event) => {
@@ -643,6 +695,62 @@ export class ReviewPanel {
         this.callbacks.onProviderChange(target.value as ProviderName);
       }
     });
+
+    this.element.addEventListener("pointerdown", (event) => {
+      const target = event.target as HTMLElement | null;
+      const dragHandle = target?.closest<HTMLElement>("[data-rg-drag-handle]");
+      if (!dragHandle || target?.closest("button, input, select, textarea, a")) {
+        return;
+      }
+
+      const rect = this.element.getBoundingClientRect();
+      this.dragState = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+      this.element.style.width = `${rect.width}px`;
+      this.element.style.left = `${rect.left}px`;
+      this.element.style.top = `${rect.top}px`;
+      this.element.style.right = "auto";
+      this.element.classList.add("rg-review-guide__panel--dragging");
+      this.element.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    this.element.addEventListener("pointermove", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      const rect = this.element.getBoundingClientRect();
+      const maxLeft = Math.max(window.innerWidth - rect.width - 12, 12);
+      const maxTop = Math.max(window.innerHeight - 80, 12);
+      const left = Math.min(Math.max(event.clientX - this.dragState.offsetX, 12), maxLeft);
+      const top = Math.min(Math.max(event.clientY - this.dragState.offsetY, 12), maxTop);
+      this.element.style.left = `${left}px`;
+      this.element.style.top = `${top}px`;
+      this.element.style.right = "auto";
+    });
+
+    this.element.addEventListener("pointerup", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      this.element.releasePointerCapture(event.pointerId);
+      this.element.classList.remove("rg-review-guide__panel--dragging");
+      this.dragState = null;
+    });
+
+    this.element.addEventListener("pointercancel", (event) => {
+      if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+
+      this.element.classList.remove("rg-review-guide__panel--dragging");
+      this.dragState = null;
+    });
   }
 
   render(state: PanelState): void {
@@ -715,7 +823,7 @@ export class ReviewPanel {
       : "";
 
     this.element.innerHTML = `
-      <div class="rg-review-guide__panel-header">
+      <div class="rg-review-guide__panel-header" data-rg-drag-handle="panel" title="Drag to move Review Guide">
         <div>
           <div class="rg-review-guide__title">Review Guide</div>
           <div class="rg-review-guide__status-row">

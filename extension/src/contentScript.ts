@@ -1,6 +1,7 @@
 import type {
   AnalyseFileResponse,
   AnalysePrResponse,
+  AnalysePrStreamEvent,
   AskFileQuestionResponse,
   ExplainFileResponse,
   HealthResponse,
@@ -52,6 +53,7 @@ const state: PanelState = {
   activeGuideSection: "understanding",
   loadedGuideSections: {},
   loadingGuideSections: {},
+  streamingUnderstanding: null,
   localRepoPathInput: "",
   baseBranchHintInput: ""
 };
@@ -310,6 +312,45 @@ async function loadProgressiveGuideSections(identity: PullRequestIdentity, runId
   await loadGuideSectionForIdentity("heatmap", identity, runId);
 }
 
+function handleAnalysePrStreamEvent(event: AnalysePrStreamEvent, runId: number): void {
+  if (runId !== analysisRunId) {
+    return;
+  }
+
+  if (event.type === "status") {
+    update({
+      streamingUnderstanding: {
+        ...(state.streamingUnderstanding ?? {}),
+        status: event.message
+      }
+    });
+    return;
+  }
+
+  if (event.type !== "partial") {
+    return;
+  }
+
+  if (event.field === "summary" || event.field === "purpose") {
+    update({
+      streamingUnderstanding: {
+        ...(state.streamingUnderstanding ?? {}),
+        [event.field]: event.text
+      }
+    });
+    return;
+  }
+
+  if ("items" in event) {
+    update({
+      streamingUnderstanding: {
+        ...(state.streamingUnderstanding ?? {}),
+        [event.field]: event.items
+      }
+    });
+  }
+}
+
 async function toggleReviewed(file: string): Promise<void> {
   if (!state.pr) {
     return;
@@ -380,9 +421,31 @@ const panel = new ReviewPanel({
     }
 
     const runId = ++analysisRunId;
-    update({ loadingAction: "analyse", bridgeError: undefined, loadingGuideSections: {}, loadedGuideSections: {} });
+    update({
+      loadingAction: "analyse",
+      bridgeError: undefined,
+      loadingGuideSections: {},
+      loadedGuideSections: {},
+      streamingUnderstanding: {
+        status: "Starting streamed PR understanding."
+      }
+    });
     try {
-      currentAnalysis = await client.analysePr(identity);
+      try {
+        currentAnalysis = await client.analysePrStream(identity, (event) => handleAnalysePrStreamEvent(event, runId));
+      } catch (streamError) {
+        if (runId !== analysisRunId) {
+          return;
+        }
+        console.warn("[review-guide] streamed analysis failed; falling back to /analyse-pr", streamError);
+        update({
+          streamingUnderstanding: {
+            ...(state.streamingUnderstanding ?? {}),
+            status: "Streaming failed; retrying standard analysis."
+          }
+        });
+        currentAnalysis = await client.analysePr(identity);
+      }
       if (runId !== analysisRunId) {
         return;
       }
@@ -399,6 +462,7 @@ const panel = new ReviewPanel({
           worries: currentAnalysis.worries.length > 0
         },
         loadingGuideSections: {},
+        streamingUnderstanding: null,
         loadingAction: null,
         preApproval: null
       });
@@ -406,7 +470,10 @@ const panel = new ReviewPanel({
       void loadProgressiveGuideSections(identity, runId);
     } catch (error) {
       if (runId === analysisRunId) {
-        update({ bridgeError: error instanceof Error ? error.message : "Failed to analyse PR." });
+        update({
+          bridgeError: error instanceof Error ? error.message : "Failed to analyse PR.",
+          streamingUnderstanding: null
+        });
       }
     } finally {
       if (runId === analysisRunId && state.loadingAction === "analyse") {
@@ -501,7 +568,8 @@ const panel = new ReviewPanel({
         activeFile: null,
         activeGuideSection: "understanding",
         loadedGuideSections: {},
-        loadingGuideSections: {}
+        loadingGuideSections: {},
+        streamingUnderstanding: null
       });
     } catch (error) {
       update({ bridgeError: error instanceof Error ? error.message : "Failed to switch provider." });
@@ -737,6 +805,7 @@ async function syncPageState(): Promise<void> {
       activeGuideSection: "understanding",
       loadedGuideSections: {},
       loadingGuideSections: {},
+      streamingUnderstanding: null,
       baseBranchHintInput: "",
       preApproval: null
     });
@@ -782,6 +851,7 @@ async function syncPageState(): Promise<void> {
       activeGuideSection: "understanding",
       loadedGuideSections: {},
       loadingGuideSections: {},
+      streamingUnderstanding: null,
       localRepoPathInput: "",
       reviewedFiles: []
     });

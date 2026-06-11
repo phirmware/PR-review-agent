@@ -4,6 +4,7 @@ import type {
   AnalyseFileResponse,
   AnalysePrProviderInput,
   AnalysePrResponse,
+  AnalysePrStreamEmit,
   AnalysePrHeatmapProviderInput,
   AnalysePrHeatmapResponse,
   AnalysePrPlanProviderInput,
@@ -341,6 +342,36 @@ export class MockProvider implements ReviewAgentProvider {
       impactChains: [],
       worries: []
     };
+  }
+
+  async analysePrStream(input: AnalysePrProviderInput, emit: AnalysePrStreamEmit): Promise<AnalysePrResponse> {
+    const result = await this.analysePr(input);
+    emit({
+      type: "partial",
+      field: "summary",
+      text: result.summary
+    });
+    emit({
+      type: "partial",
+      field: "purpose",
+      text: result.prUnderstanding.purpose
+    });
+    emit({
+      type: "partial",
+      field: "affectedSystems",
+      items: result.prUnderstanding.affectedSystems
+    });
+    emit({
+      type: "partial",
+      field: "potentialRisks",
+      items: result.prUnderstanding.potentialRisks
+    });
+    emit({
+      type: "partial",
+      field: "keyBehaviorChanges",
+      items: result.prUnderstanding.keyBehaviorChanges
+    });
+    return result;
   }
 
   async analysePrPlan(input: AnalysePrPlanProviderInput): Promise<AnalysePrPlanResponse> {

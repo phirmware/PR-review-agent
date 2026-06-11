@@ -98,6 +98,39 @@ describe("MockProvider", () => {
     );
   });
 
+  it("streams PR understanding events before returning the final mock result", async () => {
+    const repoPath = await makeChangedRepo();
+    const provider = new MockProvider();
+    const events: unknown[] = [];
+
+    const result = await provider.analysePrStream(
+      {
+        host: "github.com",
+        owner: "iag-loyalty",
+        repo: "rewards-service",
+        prNumber: 123,
+        worktreePath: repoPath,
+        baseRef: "HEAD~1",
+        headRef: "HEAD"
+      },
+      (event) => events.push(event)
+    );
+
+    expect(result.prUnderstanding.purpose).toContain("2 file");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "partial",
+          field: "purpose"
+        }),
+        expect.objectContaining({
+          type: "partial",
+          field: "potentialRisks"
+        })
+      ])
+    );
+  });
+
   it("supports explain-file and pre-approval checks", async () => {
     const repoPath = await makeChangedRepo();
     const provider = new MockProvider();

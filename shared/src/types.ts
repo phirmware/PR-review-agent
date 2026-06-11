@@ -115,6 +115,41 @@ export interface AnalysePrResponse {
   worries: ReviewWorry[];
 }
 
+export type AnalysePrStreamStage = "prepare" | "context" | "provider" | "final";
+
+export type AnalysePrStreamPartialField =
+  | "summary"
+  | "purpose"
+  | "affectedSystems"
+  | "potentialRisks"
+  | "keyBehaviorChanges";
+
+export type AnalysePrStreamEvent =
+  | {
+      type: "status";
+      stage: AnalysePrStreamStage;
+      message: string;
+      elapsedMs?: number;
+    }
+  | {
+      type: "partial";
+      field: "summary" | "purpose";
+      text: string;
+    }
+  | {
+      type: "partial";
+      field: "affectedSystems" | "potentialRisks" | "keyBehaviorChanges";
+      items: string[];
+    }
+  | {
+      type: "final";
+      result: AnalysePrResponse;
+    }
+  | {
+      type: "error";
+      error: string;
+    };
+
 export interface AnalysePrPlanRequest extends PullRequestIdentity {}
 
 export interface AnalysePrPlanResponse {
@@ -290,6 +325,8 @@ export interface PrContextPack {
 export interface AnalysePrProviderInput extends ProviderExecutionInput {
   contextPack?: PrContextPack;
 }
+
+export type AnalysePrStreamEmit = (event: AnalysePrStreamEvent) => void;
 
 export interface AnalysePrPlanProviderInput extends AnalysePrProviderInput {}
 
